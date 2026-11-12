@@ -41,7 +41,6 @@ final class AppModel {
     var queues: [Queue] = []
     var isLoading = false
     var errorMessage: String?
-    var lastRefreshed: Date?
 
     var selection: SidebarSelection? {
         didSet {
@@ -239,7 +238,6 @@ final class AppModel {
                     fresh = EntityRow(queue)
                 }
                 messageReloadToken += 1
-                lastRefreshed = Date()
                 log.add("Refreshed \(entity.fullName): \(fresh.deadLetterCount) dead-lettered, \(fresh.activeCount) active.")
             } catch { fail(error, doing: "Refreshing \(entity.fullName)") }
         } else if let name = selection?.topicName {
@@ -282,7 +280,6 @@ final class AppModel {
                 if let i = topics.firstIndex(where: { $0.name == ref.name }) { topics[i] = fresh }
             }
             messageReloadToken += 1
-            lastRefreshed = Date()
             log.add("Refreshed \(ref.kindName) \(ref.name).")
         } catch { fail(error, doing: "Refreshing \(ref.kindName) \(ref.name)") }
     }
@@ -327,7 +324,6 @@ final class AppModel {
         do {
             replace(subscription: try await client.subscription(topic: sub.topic, name: sub.name))
             messageReloadToken += 1
-            lastRefreshed = Date()
             log.add("Refreshed subscription \(sub.id).")
         } catch { fail(error, doing: "Refreshing subscription \(sub.id)") }
     }
@@ -421,7 +417,6 @@ final class AppModel {
             async let loadedQueues = client.listQueues()
             async let loadedTopics = client.listTopics()
             (queues, topics) = try await (loadedQueues, loadedTopics)
-            lastRefreshed = Date()
             errorMessage = nil
             let dead = topics.reduce(0) { $0 + $1.deadLetterCount } + queues.reduce(0) { $0 + $1.deadLetterCount }
             log.add("Loaded \(queues.count) queues, \(topics.count) topics, \(dead) dead-lettered messages.", level: .info)

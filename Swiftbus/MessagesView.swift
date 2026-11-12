@@ -46,8 +46,6 @@ struct MessagesView: View {
                 }
             }
         }
-        .navigationTitle(model.entity.name)
-        .navigationSubtitle("\(model.entity.isQueue ? "Queue" : model.entity.path) · \(model.messages.count) \(model.queue.rawValue.lowercased()) loaded")
         .toolbar {
             ToolbarItem {
                 Picker("Queue", selection: $model.queue) {
@@ -266,7 +264,7 @@ struct MessageInspector: View {
                 }
                 .padding(.horizontal, 12).padding(.vertical, 8)
                 ScrollView([.vertical, .horizontal]) {
-                    Text(body.text)
+                    Text(SyntaxHighlighter.attributed(body.text, format: editorFormat(for: body.format)))
                         .font(.system(size: 12, design: .monospaced))
                         .lineSpacing(2)
                         .textSelection(.enabled)
@@ -330,6 +328,14 @@ struct MessageInspector: View {
             .scrollContentBackground(.hidden)
             .background(Color(nsColor: .windowBackgroundColor))
             .frame(minWidth: 280)
+        }
+    }
+
+    private func editorFormat(for format: BodyFormat) -> EditorFormat {
+        switch format {
+        case .json: .json
+        case .xml: .xml
+        case .text, .binary: .text
         }
     }
 

@@ -42,6 +42,7 @@ the `MessagingClient` protocol, so the helper could later be replaced by a pure-
 │   ├── DeadLetterModel.swift      ← view model for one entity's message list, resend/delete runs
 │   ├── EntitySheets.swift         ← "Create subscription" and "Send messages" sheets
 │   ├── JSONEditor.swift           ← NSTextView-backed body editor with JSON/XML syntax colouring
+│   ├── SyntaxHighlighter.swift    ← JSON/XML colour spans, shared by the editor and the message inspector
 │   ├── MessagesView.swift         ← message table, detail pane, action progress UI
 │   ├── ActivityLog.swift          ← in-memory log of actions/errors
 │   ├── ActivityLogView.swift      ← activity log window (⌥⌘L)

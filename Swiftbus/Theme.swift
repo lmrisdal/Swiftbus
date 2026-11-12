@@ -89,6 +89,9 @@ struct CountPill: View {
     enum Kind { case deadLetter, active, transfer }
     let count: Int
     var kind: Kind = .deadLetter
+    /// True when drawn on a selected (accent-filled) row, where the kind tints would be unreadable.
+    /// Callers pass it because List/Table rows on macOS don't report selection to their content.
+    var onSelection = false
 
     private var tint: Color {
         switch kind {
@@ -98,15 +101,20 @@ struct CountPill: View {
         }
     }
 
+    private var foreground: AnyShapeStyle {
+        if onSelection { return AnyShapeStyle(Color.white.opacity(count == 0 ? 0.6 : 1)) }
+        return count == 0 ? AnyShapeStyle(.tertiary) : AnyShapeStyle(tint)
+    }
+
     var body: some View {
         Text(count, format: .number)
             .font(.system(.caption, design: .rounded).monospacedDigit().weight(.bold))
             .contentTransition(.numericText(value: Double(count)))
             .padding(.horizontal, 7).padding(.vertical, 2)
-            .foregroundStyle(count == 0 ? AnyShapeStyle(.tertiary) : AnyShapeStyle(tint))
+            .foregroundStyle(foreground)
             .background {
                 if count > 0 {
-                    Capsule().fill(tint.opacity(0.15))
+                    Capsule().fill(onSelection ? Color.white.opacity(0.25) : tint.opacity(0.15))
                 }
             }
             .animation(.snappy, value: count)

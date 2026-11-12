@@ -104,7 +104,6 @@ struct ContentView: View {
             openWindow(id: "welcome")
         })
         .navigationTitle(model.activeConnection?.name ?? "Swiftbus")
-        .navigationSubtitle(model.lastRefreshed.map { "Refreshed \($0.formatted(date: .omitted, time: .standard))" } ?? "")
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Menu("Connections", systemImage: "externaldrive.connected.to.line.below") {
@@ -163,9 +162,10 @@ struct ContentView: View {
                 Section(isExpanded: $queuesExpanded) {
                     ForEach(model.visibleQueues) { queue in
                         SidebarRow(title: queue.name, isQueue: true, count: queue.deadLetterCount, isDisabled: queue.isDisabled,
-                                   counts: "(\(queue.activeCount), \(queue.deadLetterCount), \(queue.transferDeadLetterCount))")
+                                   counts: (queue.activeCount, queue.deadLetterCount, queue.transferDeadLetterCount),
+                                   isSelected: model.selection == .queue(queue.name))
                             .tag(SidebarSelection.queue(queue.name))
-                            .nativeContextMenu { entityMenu(EntityRef(kind: .queue, name: queue.name)) }
+                            .contextMenu { entityMenu(EntityRef(kind: .queue, name: queue.name)) }
                     }
                 } header: { SidebarHeader(title: "Queues", count: model.visibleQueues.count) }
                 Section(isExpanded: $topicsExpanded) {
@@ -173,24 +173,28 @@ struct ContentView: View {
                         if layout == .columns {
                             SidebarRow(title: topic.name, isQueue: false, count: topic.deadLetterCount, isDisabled: topic.isDisabled)
                                 .tag(SidebarSelection.topic(topic.name))
-                                .nativeContextMenu { entityMenu(EntityRef(kind: .topic, name: topic.name)) }
+                                .contextMenu { entityMenu(EntityRef(kind: .topic, name: topic.name)) }
                         } else {
                             DisclosureGroup(isExpanded: expansion(of: topic.name)) {
                                 ForEach(topic.subscriptions) { sub in
                                     SidebarRow(title: sub.name, isQueue: false, count: sub.deadLetterCount,
                                                isDisabled: sub.status == "Disabled",
-                                               counts: "(\(sub.activeCount), \(sub.deadLetterCount), \(sub.transferDeadLetterCount))",
+                                               counts: (sub.activeCount, sub.deadLetterCount, sub.transferDeadLetterCount),
+                                               isSelected: model.selection == .subscription(topic: topic.name, name: sub.name),
                                                systemImage: "envelope")
                                         .tag(SidebarSelection.subscription(topic: topic.name, name: sub.name))
-                                        .nativeContextMenu { subscriptionMenu(sub) }
+                                        .contextMenu { subscriptionMenu(sub) }
                                 }
                             } label: {
                                 SidebarRow(title: topic.name, isQueue: false, count: topic.deadLetterCount, isDisabled: topic.isDisabled)
                                     .tag(SidebarSelection.topic(topic.name))
-                                    .nativeContextMenu(onDoubleClick: { toggleExpansion(of: topic.name) }) {
-                                        let expanded = expandedTopics.contains(topic.name)
-                                        return [.item(expanded ? "Collapse" : "Expand") { toggleExpansion(of: topic.name) }, .separator]
-                                            + entityMenu(EntityRef(kind: .topic, name: topic.name))
+                                    .onDoubleClick { toggleExpansion(of: topic.name) }
+                                    .contextMenu {
+                                        Button(expandedTopics.contains(topic.name) ? "Collapse" : "Expand") {
+                                            toggleExpansion(of: topic.name)
+                                        }
+                                        Divider()
+                                        entityMenu(EntityRef(kind: .topic, name: topic.name))
                                     }
                             }
                         }
@@ -221,58 +225,49 @@ struct ContentView: View {
 
     // MARK: Queue and topic context menu
 
-    private func entityMenu(_ ref: EntityRef) -> [MenuEntry] {
+    @ViewBuilder private func entityMenu(_ ref: EntityRef) -> some View {
         let kind = ref.kindName.capitalized
         let disabled = model.isDisabled(ref)
-        var entries: [MenuEntry] = [
-            .item(disabled ? "Enable \(kind)" : "Disable \(kind)") { Task { await model.setDisabled(!disabled, ref) } },
-            .item("Delete \(kind)…") { pending = .delete(ref) },
-            .item("Refresh \(kind)") { Task { await model.refresh(ref) } },
-            .separator,
-        ]
+        Button(disabled ? "Enable \(kind)" : "Disable \(kind)") { Task { await model.setDisabled(!disabled, ref) } }
+        Button("Delete \(kind)…") { pending = .delete(ref) }
+        Button("Refresh \(kind)") { Task { await model.refresh(ref) } }
+        Divider()
         if ref.kind == .topic {
-            entries += [.item("Create Subscription…") { subscriptionTopic = ref }, .separator]
+            Button("Create Subscription…") { subscriptionTopic = ref }
+            Divider()
         }
-        entries += [
-            .item("Copy \(kind) URL") {
-                guard let url = model.url(for: ref) else { return }
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(url, forType: .string)
-            },
-            .separator,
-            .item("Send Messages…") { sendTarget = ref },
-            .submenu("Purge", [
-                .item("Messages…") { pending = .purge(ref, .active) },
-                .item("Dead-letter Queue Messages…") { pending = .purge(ref, .deadLetter) },
-                .separator,
-                .item("All Messages…") { pending = .purge(ref, .all) },
-            ]),
-        ]
-        return entries
+        Button("Copy \(kind) URL") { copyToPasteboard(model.url(for: ref)) }
+        Divider()
+        Button("Send Messages…") { sendTarget = ref }
+        Menu("Purge") {
+            Button("Messages…") { pending = .purge(ref, .active) }
+            Button("Dead-letter Queue Messages…") { pending = .purge(ref, .deadLetter) }
+            Divider()
+            Button("All Messages…") { pending = .purge(ref, .all) }
+        }
     }
 
-    private func subscriptionMenu(_ sub: Subscription) -> [MenuEntry] {
-        func copy(_ string: String?) {
-            guard let string else { return }
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(string, forType: .string)
-        }
+    @ViewBuilder private func subscriptionMenu(_ sub: Subscription) -> some View {
         let disabled = sub.status == "Disabled"
-        return [
-            .item("Delete Subscription…") { pending = .deleteSubscription(sub) },
-            .item(disabled ? "Enable Subscription" : "Disable Subscription") { Task { await model.setDisabled(!disabled, sub) } },
-            .item("Refresh Subscription") { Task { await model.refresh(sub) } },
-            .separator,
-            .item("Copy Subscription URL") { copy(model.url(for: sub)) },
-            .item("Copy Dead-letter Queue URL") { copy(model.url(for: sub, deadLetter: true)) },
-            .separator,
-            .submenu("Purge", [
-                .item("Messages…") { pending = .purgeSubscription(sub, .active) },
-                .item("Dead-letter Queue Messages…") { pending = .purgeSubscription(sub, .deadLetter) },
-                .separator,
-                .item("All Messages…") { pending = .purgeSubscription(sub, .all) },
-            ]),
-        ]
+        Button("Delete Subscription…") { pending = .deleteSubscription(sub) }
+        Button(disabled ? "Enable Subscription" : "Disable Subscription") { Task { await model.setDisabled(!disabled, sub) } }
+        Button("Refresh Subscription") { Task { await model.refresh(sub) } }
+        Divider()
+        Button("Copy Subscription URL") { copyToPasteboard(model.url(for: sub)) }
+        Button("Copy Dead-letter Queue URL") { copyToPasteboard(model.url(for: sub, deadLetter: true)) }
+        Divider()
+        Menu("Purge") {
+            Button("Messages…") { pending = .purgeSubscription(sub, .active) }
+            Button("Dead-letter Queue Messages…") { pending = .purgeSubscription(sub, .deadLetter) }
+            Divider()
+            Button("All Messages…") { pending = .purgeSubscription(sub, .all) }
+        }
+    }
+
+    private func copyToPasteboard(_ string: String?) {
+        guard let string else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(string, forType: .string)
     }
 
     private func confirmationTitle(_ action: PendingAction) -> String {
@@ -517,22 +512,43 @@ private struct SidebarRow: View {
     let isQueue: Bool
     let count: Int
     var isDisabled = false
-    /// Shown after the name, e.g. "(active, dead-letter, transfer)" for a queue.
-    var counts: String?
+    /// Shown after the name as "(active, dead-letter, transfer)". Rows that have it skip the
+    /// dead-letter pill, since the same number is already in the tuple.
+    var counts: (active: Int, deadLetter: Int, transfer: Int)?
+    /// The sidebar List does not report selection to its rows on macOS, so the caller passes it.
+    var isSelected = false
     var systemImage: String?
     var body: some View {
         HStack(spacing: 8) {
             EntityIcon(isQueue: isQueue, systemName: systemImage)
             Text(title).lineLimit(1).truncationMode(.middle).foregroundStyle(isDisabled ? .secondary : .primary)
             if let counts {
-                Text(counts).font(.callout.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                countsText(counts).font(.callout.monospacedDigit()).lineLimit(1).fixedSize()
                     .help("Active, dead-letter, transfer dead-letter")
             }
             Spacer(minLength: 4)
             if isDisabled { Image(systemName: "pause.circle").foregroundStyle(.secondary).help("Disabled") }
-            if count > 0 { CountPill(count: count) }
+            if counts == nil, count > 0 { CountPill(count: count) }
         }
         .padding(.vertical, 1)
+    }
+
+    /// Zeroes stay muted; non-zero numbers take their kind's colour so problems stand out.
+    private func countsText(_ c: (active: Int, deadLetter: Int, transfer: Int)) -> Text {
+        // On a selected row the accent background swallows the tints, so fall back to the
+        // row's own (white) foreground and let weight carry the emphasis.
+        let selected = isSelected
+        func number(_ n: Int, _ tint: Color) -> Text {
+            guard n > 0 else { return Text("\(n)").foregroundStyle(.secondary) }
+            return selected ? Text("\(n)").fontWeight(.bold).foregroundStyle(.primary)
+                            : Text("\(n)").fontWeight(.semibold).foregroundStyle(tint)
+        }
+        let sep = Text(", ").foregroundStyle(.secondary)
+        return Text("(").foregroundStyle(.secondary)
+            + number(c.active, Theme.active) + sep
+            + number(c.deadLetter, Theme.deadLetter) + sep
+            + number(c.transfer, Theme.transfer)
+            + Text(")").foregroundStyle(.secondary)
     }
 }
 
@@ -712,13 +728,13 @@ struct SubscriptionTable: View {
         }
     }
     private func activeCell(_ e: EntityRow) -> some View {
-        CountPill(count: e.activeCount, kind: .active)
+        CountPill(count: e.activeCount, kind: .active, onSelection: model.selectedEntityID == e.id)
     }
     private func deadLetterCell(_ e: EntityRow) -> some View {
-        CountPill(count: e.deadLetterCount, kind: .deadLetter)
+        CountPill(count: e.deadLetterCount, kind: .deadLetter, onSelection: model.selectedEntityID == e.id)
     }
     private func transferCell(_ e: EntityRow) -> some View {
-        CountPill(count: e.transferDeadLetterCount, kind: .transfer)
+        CountPill(count: e.transferDeadLetterCount, kind: .transfer, onSelection: model.selectedEntityID == e.id)
     }
 }
 
