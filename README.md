@@ -17,6 +17,11 @@ An Azure Service Bus manager for macOS.
 Also included: an activity log (⌥⌘L) and a retry button for
 messages that failed to resend.
 
+In **Settings** (⌘,) you can add, edit and remove saved connections, pick light, dark or system
+appearance, and choose the layout: a sidebar
+tree of queues, topics and their subscriptions next to the messages (the default; double-click a topic
+to expand it), or a sidebar of queues and topics, a subscription table, and the messages.
+
 ## Requirements
 
 - macOS 14 or later
@@ -28,7 +33,7 @@ messages that failed to resend.
 1. Open Swiftbus and choose **Add connection**.
 2. Paste your connection string, for example
    `Endpoint=sb://my-namespace.servicebus.windows.net/;SharedAccessKeyName=...;SharedAccessKey=...`
-3. Pick a topic in the sidebar, then a subscription to see its dead-lettered messages.
+3. Expand a topic in the sidebar and pick a subscription to see its dead-lettered messages.
 
 ## Building from source
 

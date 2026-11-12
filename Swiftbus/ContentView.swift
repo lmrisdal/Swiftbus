@@ -19,26 +19,80 @@ struct ContentView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
     @State private var showingAddConnection = false
-    @State private var showingManageConnections = false
+    @Environment(\.openSettings) private var openSettings
+    @AppStorage(SettingsPane.key) private var settingsPane = SettingsPane.general
     @State private var queuesExpanded = true
     @State private var topicsExpanded = true
+    /// Topics opened in the sidebar tree to show their subscriptions.
+    @State private var expandedTopics: Set<String> = []
     @State private var hoveringFilter = false
     @State private var sendTarget: EntityRef?
     @State private var subscriptionTopic: EntityRef?
     @State private var pending: PendingAction?
     @FocusState private var searchFocused: Bool
+    @AppStorage(LayoutSetting.key) private var layout = LayoutSetting.tree
+
+    /// Each layout keeps one fixed set of columns: swapping split views on selection would
+    /// rebuild the table and lose its sort and scroll position.
+    @ViewBuilder private var splitView: some View {
+        switch layout {
+        case .tree:
+            NavigationSplitView {
+                sidebar
+            } detail: {
+                treeDetail
+            }
+        case .columns:
+            NavigationSplitView {
+                sidebar
+            } content: {
+                contentColumn
+                    .navigationSplitViewColumnWidth(min: 320, ideal: 480)
+            } detail: {
+                detailColumn
+            }
+        }
+    }
+
+    /// The tree layout's single pane: messages for a queue or subscription, a summary for a topic
+    /// (its subscriptions are already in the tree), or the table of all dead-letters, whose rows
+    /// open in the tree.
+    @ViewBuilder private var treeDetail: some View {
+        switch model.selection {
+        case .topic(let name)?:
+            Group {
+                if let topic = model.topic(named: name) {
+                    TopicOverview(topic: topic)
+                } else {
+                    contentColumn
+                }
+            }
+            .toolbar { ActivityLogToolbar(model: model) }
+        case .allDeadLetters?:
+            if model.activeConnection != nil {
+                SubscriptionTable(searchFocused: $searchFocused)
+                    .toolbar { ActivityLogToolbar(model: model) }
+            } else {
+                contentColumn.toolbar { ActivityLogToolbar(model: model) }
+            }
+        case .queue?, .subscription?:
+            detailColumn
+        case nil:
+            contentColumn.toolbar { ActivityLogToolbar(model: model) }
+        }
+    }
 
     var body: some View {
         @Bindable var model = model
-        // One fixed three-column layout: swapping split views on selection would rebuild the
-        // table and lose its sort and scroll position.
-        NavigationSplitView {
-            sidebar
-        } content: {
-            contentColumn
-                .navigationSplitViewColumnWidth(min: 320, ideal: 480)
-        } detail: {
-            detailColumn
+        splitView
+        .onChange(of: layout) { _, new in
+            // The column layout's sidebar has no subscription rows: show the subscription's topic,
+            // which keeps the subscription selected in its table.
+            if new == .columns, case .subscription(let topic, _)? = model.selection { model.selection = .topic(topic) }
+            // The tree layout opens the chosen row in place of the table, so go straight to it.
+            if new == .tree, let entity = model.selectedEntity, model.selection != nil {
+                model.selection = entity.isQueue ? .queue(entity.path) : .subscription(topic: entity.path, name: entity.name)
+            }
         }
         .background(WindowCloser(shouldClose: model.activeConnection == nil) {
             // The system opens every Window scene at launch (or restores this one). Without a
@@ -55,7 +109,10 @@ struct ContentView: View {
                     }
                     Divider()
                     Button("Add connection…") { showingAddConnection = true }
-                    Button("Manage connections…") { showingManageConnections = true }
+                    Button("Manage connections…") {
+                        settingsPane = .connections
+                        openSettings()
+                    }
                         .disabled(model.connections.isEmpty)
                 }
             }
@@ -77,7 +134,6 @@ struct ContentView: View {
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { [model] in model.logWidth = $0 }
         }
         .sheet(isPresented: $showingAddConnection) { ConnectionSheet() }
-        .sheet(isPresented: $showingManageConnections) { ManageConnectionsSheet() }
         .sheet(item: $sendTarget) { SendMessagesSheet(target: $0) }
         .sheet(item: $subscriptionTopic) { CreateSubscriptionSheet(topic: $0.name) }
         .confirmationDialog(pending.map(confirmationTitle) ?? "", isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
@@ -108,16 +164,52 @@ struct ContentView: View {
                 } header: { SidebarHeader(title: "Queues", count: model.visibleQueues.count) }
                 Section(isExpanded: $topicsExpanded) {
                     ForEach(model.visibleTopics) { topic in
-                        SidebarRow(title: topic.name, isQueue: false, count: topic.deadLetterCount, isDisabled: topic.isDisabled)
-                            .tag(SidebarSelection.topic(topic.name))
-                            .nativeContextMenu { entityMenu(EntityRef(kind: .topic, name: topic.name)) }
+                        if layout == .columns {
+                            SidebarRow(title: topic.name, isQueue: false, count: topic.deadLetterCount, isDisabled: topic.isDisabled)
+                                .tag(SidebarSelection.topic(topic.name))
+                                .nativeContextMenu { entityMenu(EntityRef(kind: .topic, name: topic.name)) }
+                        } else {
+                            DisclosureGroup(isExpanded: expansion(of: topic.name)) {
+                                ForEach(topic.subscriptions) { sub in
+                                    SidebarRow(title: sub.name, isQueue: false, count: sub.deadLetterCount,
+                                               isDisabled: sub.status == "Disabled",
+                                               counts: "(\(sub.activeCount), \(sub.deadLetterCount), \(sub.transferDeadLetterCount))",
+                                               systemImage: "envelope")
+                                        .tag(SidebarSelection.subscription(topic: topic.name, name: sub.name))
+                                }
+                            } label: {
+                                SidebarRow(title: topic.name, isQueue: false, count: topic.deadLetterCount, isDisabled: topic.isDisabled)
+                                    .tag(SidebarSelection.topic(topic.name))
+                                    .nativeContextMenu(onDoubleClick: { toggleExpansion(of: topic.name) }) {
+                                        let expanded = expandedTopics.contains(topic.name)
+                                        return [.item(expanded ? "Collapse" : "Expand") { toggleExpansion(of: topic.name) }, .separator]
+                                            + entityMenu(EntityRef(kind: .topic, name: topic.name))
+                                    }
+                            }
+                        }
                     }
                 } header: { SidebarHeader(title: "Topics", count: model.visibleTopics.count) }
             }
             .scrollContentBackground(.hidden)
+            // Reveal a subscription picked elsewhere (e.g. in the table) in the tree.
+            .onChange(of: model.selection) { _, new in
+                if case .subscription(let topic, _)? = new { expandedTopics.insert(topic) }
+            }
             customFilters
         }
-        .navigationSplitViewColumnWidth(min: 220, ideal: 270, max: 400)
+        // Subscription names are often GUIDs with counts after them, so allow a wide tree.
+        .navigationSplitViewColumnWidth(min: 220, ideal: 300, max: 700)
+    }
+
+    private func expansion(of topic: String) -> Binding<Bool> {
+        Binding(get: { expandedTopics.contains(topic) },
+                set: { if $0 { expandedTopics.insert(topic) } else { expandedTopics.remove(topic) } })
+    }
+
+    private func toggleExpansion(of topic: String) {
+        withAnimation {
+            if expandedTopics.contains(topic) { expandedTopics.remove(topic) } else { expandedTopics.insert(topic) }
+        }
     }
 
     // MARK: Queue and topic context menu
@@ -291,6 +383,78 @@ struct ActivityLogToolbar: ToolbarContent {
     }
 }
 
+// MARK: - Topic overview
+
+/// What the tree layout shows for a selected topic: its message totals, then the settings and
+/// dates from its description. Its subscriptions are picked from the tree.
+private struct TopicOverview: View {
+    let topic: Topic
+
+    var body: some View {
+        let d = topic.details
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                EntityIcon(isQueue: false, size: 20)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(topic.name).font(.title3.weight(.semibold)).lineLimit(1)
+                    Text(topic.isDisabled ? "Topic · Disabled" : "Topic").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .frame(height: Theme.paneHeaderHeight)
+            Divider()
+            Form {
+                Section("Messages") {
+                    LabeledContent("Subscriptions", value: topic.subscriptions.count, format: .number)
+                    LabeledContent("Active") { CountPill(count: topic.subscriptions.reduce(0) { $0 + $1.activeCount }, kind: .active) }
+                    LabeledContent("Dead-lettered") { CountPill(count: topic.deadLetterCount, kind: .deadLetter) }
+                    LabeledContent("Transfer dead-lettered") { CountPill(count: topic.transferDeadLetterCount, kind: .transfer) }
+                    if let scheduled = d.scheduledMessageCount {
+                        LabeledContent("Scheduled", value: scheduled, format: .number)
+                    }
+                }
+                Section("Settings") {
+                    LabeledContent("Status", value: topic.isDisabled ? "Disabled" : "Active")
+                    if let size = d.sizeInBytes {
+                        LabeledContent("Size", value: sizeText(size, max: d.maxSizeInMegabytes))
+                    }
+                    LabeledContent("Default message time to live", value: TopicDetails.describe(d.defaultMessageTimeToLive))
+                    LabeledContent("Auto-delete on idle", value: TopicDetails.describe(d.autoDeleteOnIdle))
+                    if let dup = d.requiresDuplicateDetection {
+                        LabeledContent("Duplicate detection",
+                                       value: dup ? "On, \(TopicDetails.describe(d.duplicateDetectionWindow)) window" : "Off")
+                    }
+                    flag("Batched operations", d.enableBatchedOperations)
+                    flag("Message ordering", d.supportOrdering)
+                    flag("Partitioning", d.enablePartitioning)
+                }
+                Section("Dates") {
+                    date("Created", d.createdAt)
+                    date("Updated", d.updatedAt)
+                    date("Last accessed", d.accessedAt)
+                }
+            }
+            .formStyle(.grouped)
+            .textSelection(.enabled)
+        }
+    }
+
+    private func sizeText(_ bytes: Int, max megabytes: Int?) -> String {
+        let used = bytes.formatted(.byteCount(style: .file))
+        guard let megabytes else { return used }
+        return "\(used) of \((Int64(megabytes) * 1_048_576).formatted(.byteCount(style: .memory)))"
+    }
+
+    @ViewBuilder private func flag(_ title: String, _ value: Bool?) -> some View {
+        if let value { LabeledContent(title, value: value ? "On" : "Off") }
+    }
+
+    private func date(_ title: String, _ value: Date?) -> some View {
+        LabeledContent(title, value: value?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
+    }
+}
+
 // MARK: - Sidebar pieces
 
 private struct SidebarHeader: View {
@@ -314,9 +478,10 @@ private struct SidebarRow: View {
     var isDisabled = false
     /// Shown after the name, e.g. "(active, dead-letter, transfer)" for a queue.
     var counts: String?
+    var systemImage: String?
     var body: some View {
         HStack(spacing: 8) {
-            EntityIcon(isQueue: isQueue)
+            EntityIcon(isQueue: isQueue, systemName: systemImage)
             Text(title).lineLimit(1).truncationMode(.middle).foregroundStyle(isDisabled ? .secondary : .primary)
             if let counts {
                 Text(counts).font(.callout.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1).fixedSize()
@@ -408,7 +573,7 @@ struct SubscriptionTable: View {
         let subtitle: String
         let isQueue: Bool
         switch model.selection {
-        case .topic(let name)?: (title, subtitle, isQueue) = (name, "Topic", false)
+        case .topic(let name)?, .subscription(let name, _)?: (title, subtitle, isQueue) = (name, "Topic", false)
         case .queue(let name)?: (title, subtitle, isQueue) = (name, "Queue", true)
         default: (title, subtitle, isQueue) = ("All dead-letters", "Topics and queues", false)
         }

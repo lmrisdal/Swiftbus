@@ -55,7 +55,7 @@ public struct ManagementClient: Sendable {
             throw ServiceBusError.notFound(name)
         }
         return Topic(name: entry.title, status: entry.fields["Status"] ?? "Active",
-                     subscriptions: try await listSubscriptions(topic: name))
+                     subscriptions: try await listSubscriptions(topic: name), details: TopicDetails(fields: entry.fields))
     }
 
     public func listSubscriptions(topic: String) async throws -> [Subscription] {
@@ -122,7 +122,10 @@ public struct ManagementClient: Sendable {
                 addNext()
             }
         }
-        return entries.map { Topic(name: $0.title, status: $0.fields["Status"] ?? "Active", subscriptions: results[$0.title] ?? []) }
+        return entries.map {
+            Topic(name: $0.title, status: $0.fields["Status"] ?? "Active", subscriptions: results[$0.title] ?? [],
+                  details: TopicDetails(fields: $0.fields))
+        }
     }
 
     // MARK: - Changing entities

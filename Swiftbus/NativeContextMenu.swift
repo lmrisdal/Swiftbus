@@ -12,28 +12,40 @@ extension View {
     /// Right-click menu backed by a plain `NSMenu`. SwiftUI's `.contextMenu` makes macOS 26 append an
     /// "Ask Siri" item that apps can't remove; an AppKit menu (like Xcode's) doesn't get it.
     /// `entries` is evaluated on each right-click, so labels reflect current state.
-    func nativeContextMenu(_ entries: @escaping () -> [MenuEntry]) -> some View {
-        overlay(NativeContextMenuView(entries: entries))
+    /// `onDoubleClick`, when given, runs on a double-click; the first click still selects the row.
+    func nativeContextMenu(onDoubleClick: (() -> Void)? = nil, _ entries: @escaping () -> [MenuEntry]) -> some View {
+        overlay(NativeContextMenuView(entries: entries, onDoubleClick: onDoubleClick))
     }
 }
 
 private struct NativeContextMenuView: NSViewRepresentable {
     let entries: () -> [MenuEntry]
+    let onDoubleClick: (() -> Void)?
 
     func makeNSView(context: Context) -> TriggerView { TriggerView() }
-    func updateNSView(_ view: TriggerView, context: Context) { view.entries = entries }
+    func updateNSView(_ view: TriggerView, context: Context) {
+        view.entries = entries
+        view.onDoubleClick = onDoubleClick
+    }
 
-    /// Transparent overlay that only claims right-clicks (and ctrl-clicks), so left clicks still
-    /// reach the row underneath and selection keeps working.
+    /// Transparent overlay that only claims right-clicks (and ctrl-clicks), plus the second click
+    /// of a double-click when `onDoubleClick` is set, so single left clicks still reach the row
+    /// underneath and selection keeps working.
     final class TriggerView: NSView, NSMenuDelegate {
         var entries: () -> [MenuEntry] = { [] }
+        var onDoubleClick: (() -> Void)?
         private var highlight: NSView?
 
         override func hitTest(_ point: NSPoint) -> NSView? {
             guard let event = NSApp.currentEvent else { return nil }
             let isMenuClick = event.type == .rightMouseDown
                 || (event.type == .leftMouseDown && event.modifierFlags.contains(.control))
-            return isMenuClick ? super.hitTest(point) : nil
+            let isDoubleClick = onDoubleClick != nil && event.type == .leftMouseDown && event.clickCount == 2
+            return isMenuClick || isDoubleClick ? super.hitTest(point) : nil
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            if event.clickCount == 2, let onDoubleClick { onDoubleClick() } else { super.mouseDown(with: event) }
         }
 
         override func menu(for event: NSEvent) -> NSMenu? {

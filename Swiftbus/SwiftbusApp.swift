@@ -7,6 +7,7 @@ struct SwiftbusApp: App {
 
     init() {
         NSTableRowView.alwaysEmphasizeSelection()
+        AppearanceSetting.current.apply()
     }
 
     var body: some Scene {
@@ -23,5 +24,10 @@ struct SwiftbusApp: App {
                 .frame(minWidth: 1100, minHeight: 560)
         }
         .commands { AppCommands() }
+
+        Settings {
+            SettingsView()
+                .environment(model)
+        }
     }
 }

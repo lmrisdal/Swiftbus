@@ -69,11 +69,13 @@ struct IconTile: View {
 struct EntityIcon: View {
     let isQueue: Bool
     var size: CGFloat = 13
+    /// Overrides the queue/topic symbol, e.g. for a subscription in the sidebar tree.
+    var systemName: String?
     /// `.increased` when the row sits on the selection highlight, where the accent color would vanish.
     @Environment(\.backgroundProminence) private var prominence
 
     var body: some View {
-        Image(systemName: isQueue ? "tray" : "tray.2")
+        Image(systemName: systemName ?? (isQueue ? "tray" : "tray.2"))
             .font(.system(size: size))
             .foregroundStyle(prominence == .increased ? AnyShapeStyle(.white) : AnyShapeStyle(Color.accentColor))
             .frame(width: size * 1.5)

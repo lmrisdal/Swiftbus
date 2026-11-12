@@ -35,7 +35,10 @@ the `MessagingClient` protocol, so the helper could later be replaced by a pure-
 │   │                                queues, sidebar selection, MessagingClient
 │   ├── ConnectionStore.swift      ← saved connections: names in UserDefaults, secrets in Keychain
 │   ├── ConnectionSheet.swift      ← "Add connection" sheet
-│   ├── ContentView.swift          ← NavigationSplitView: sidebar + entity list
+│   ├── ContentView.swift          ← NavigationSplitView: sidebar tree + messages, or
+│   │                                sidebar + entity table + messages (per Settings)
+│   ├── SettingsView.swift         ← Settings window (⌘,): General (appearance, layout)
+│   ├── ConnectionsSettings.swift  ← Settings › Connections: add, edit, remove saved connections
 │   ├── DeadLetterModel.swift      ← view model for one entity's message list, resend/delete runs
 │   ├── EntitySheets.swift         ← "Create subscription" and "Send messages" sheets
 │   ├── MessagesView.swift         ← message table, detail pane, action progress UI

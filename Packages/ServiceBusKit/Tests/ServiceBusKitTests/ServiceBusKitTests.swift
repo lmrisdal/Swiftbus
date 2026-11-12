@@ -211,6 +211,47 @@ func topicEntry(_ name: String) -> String {
         let topics = try await ManagementClient(connection: cs, transport: transport).listTopics()
         #expect(topics.first?.isDisabled == true)
     }
+
+    @Test func topicDetailsAreParsed() async throws {
+        let entry = """
+        <entry><title type="text">t1</title><content type="application/xml">
+        <TopicDescription xmlns="http://schemas.microsoft.com/netservices/2010/10/servicebus/connect">
+        <DefaultMessageTimeToLive>P10675199DT2H48M5.4775807S</DefaultMessageTimeToLive>
+        <MaxSizeInMegabytes>81920</MaxSizeInMegabytes><RequiresDuplicateDetection>false</RequiresDuplicateDetection>
+        <DuplicateDetectionHistoryTimeWindow>PT10M</DuplicateDetectionHistoryTimeWindow>
+        <EnableBatchedOperations>true</EnableBatchedOperations><SizeInBytes>39745</SizeInBytes>
+        <Status>Active</Status><CreatedAt>2025-01-27T13:45:12.1234567Z</CreatedAt>
+        <UpdatedAt>2025-01-27T13:45:13Z</UpdatedAt><AccessedAt>0001-01-01T00:00:00Z</AccessedAt>
+        <SupportOrdering>false</SupportOrdering>
+        <CountDetails xmlns:d2p1="http://schemas.microsoft.com/netservices/2011/06/servicebus">
+        <d2p1:ScheduledMessageCount>3</d2p1:ScheduledMessageCount></CountDetails>
+        <AutoDeleteOnIdle>P14D</AutoDeleteOnIdle><EnablePartitioning>false</EnablePartitioning>
+        </TopicDescription></content></entry>
+        """
+        let transport = FakeTransport { req in req.url!.path.hasSuffix("Topics") ? (200, feed(entry)) : (200, feed("")) }
+        let d = try #require(try await ManagementClient(connection: cs, transport: transport).listTopics().first).details
+        #expect(d.sizeInBytes == 39745 && d.maxSizeInMegabytes == 81920 && d.scheduledMessageCount == 3)
+        #expect(d.defaultMessageTimeToLive == nil)
+        #expect(d.duplicateDetectionWindow == 600 && d.autoDeleteOnIdle == 14 * 86_400)
+        #expect(d.enableBatchedOperations == true && d.requiresDuplicateDetection == false && d.supportOrdering == false)
+        #expect(d.createdAt == Date(timeIntervalSince1970: 1_737_985_512))
+        #expect(d.accessedAt == nil)
+    }
+}
+
+@Suite struct TopicDetailsTests {
+    @Test func parsesDurations() {
+        #expect(TopicDetails.parseDuration("PT1H30M") == 5_400)
+        #expect(TopicDetails.parseDuration("P1DT0.5S") == 86_400.5)
+        #expect(TopicDetails.parseDuration("P1Y") == nil)
+        #expect(TopicDetails.parseDuration("PT") == nil)
+        #expect(TopicDetails.parseDuration("10M") == nil)
+    }
+
+    @Test func describesDurations() {
+        #expect(TopicDetails.describe(nil) == "Never")
+        #expect(TopicDetails.describe(600) == "10 minutes")
+    }
 }
 
 final class RequestLog: @unchecked Sendable {

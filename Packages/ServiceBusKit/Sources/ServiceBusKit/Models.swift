@@ -6,11 +6,14 @@ public struct Topic: Sendable, Equatable, Hashable, Identifiable {
     /// `Active` or `Disabled`.
     public var status: String
     public var subscriptions: [Subscription]
+    /// Settings and metadata from the topic's description (size, TTL, timestamps, ...).
+    public var details: TopicDetails
 
-    public init(name: String, status: String = "Active", subscriptions: [Subscription] = []) {
+    public init(name: String, status: String = "Active", subscriptions: [Subscription] = [], details: TopicDetails = TopicDetails()) {
         self.name = name
         self.status = status
         self.subscriptions = subscriptions
+        self.details = details
     }
 
     public var isDisabled: Bool { status == "Disabled" }

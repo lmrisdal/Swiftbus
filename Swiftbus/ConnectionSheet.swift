@@ -4,6 +4,8 @@ import SwiftUI
 struct ConnectionSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    /// Whether saving also connects the main window to the new namespace.
+    var connectsAfterSaving = true
     @State private var name = ""
     @State private var connectionString = ""
     @State private var status: String?
@@ -55,7 +57,7 @@ struct ConnectionSheet: View {
             defer { isWorking = false }
             do {
                 if save {
-                    try await model.add(name: name, connectionString: connectionString)
+                    try await model.add(name: name, connectionString: connectionString, connecting: connectsAfterSaving)
                     dismiss()
                 } else {
                     try await model.testConnection(connectionString)

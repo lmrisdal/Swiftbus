@@ -6,6 +6,17 @@ enum SidebarSelection: Hashable {
     case allDeadLetters
     case topic(String)
     case queue(String)
+    /// A subscription picked in the sidebar tree: shows its topic's table with it selected.
+    case subscription(topic: String, name: String)
+
+    /// The topic whose subscriptions the content column lists, if any.
+    var topicName: String? {
+        switch self {
+        case .topic(let name): name
+        case .subscription(let topic, _): topic
+        default: nil
+        }
+    }
 }
 
 /// A queue or topic, as the target of a context-menu action.
@@ -34,11 +45,19 @@ final class AppModel {
 
     var selection: SidebarSelection? {
         didSet {
-            if selection != oldValue { entityFilter = "" }
+            // Moving between a topic and its own subscriptions keeps the table's filter.
+            if selection != oldValue, selection?.topicName == nil || selection?.topicName != oldValue?.topicName { entityFilter = "" }
             // A subscription from another topic must not keep scoping ⌘R after the sidebar moves on.
             switch selection {
             case .topic(let name)?:
-                if case .subscription? = selectedEntityID, selectedEntity?.path != name { selectedEntityID = nil }
+                // The tree layout shows the topic's table in place of the messages, so a kept row
+                // could not be clicked again to open it.
+                if LayoutSetting.current == .tree { selectedEntityID = nil }
+                else if case .subscription? = selectedEntityID, selectedEntity?.path != name { selectedEntityID = nil }
+            case .allDeadLetters?:
+                if LayoutSetting.current == .tree { selectedEntityID = nil }
+            case .subscription(let topic, let name)?:
+                selectedEntityID = .subscription("\(topic)/\(name)")
             case .queue(let name)?:
                 // A queue shows an overview rather than a table to pick from (see SubscriptionTable), so it selects itself.
                 selectedEntityID = .queue(name)
@@ -48,7 +67,27 @@ final class AppModel {
     }
     /// Bumped by a scoped refresh so the open message list reloads too.
     private(set) var messageReloadToken = 0
-    var selectedEntityID: EntityRow.ID?
+    var selectedEntityID: EntityRow.ID? {
+        didSet {
+            // In the tree layout, picking a row in a topic's (or all dead-letters') table moves the
+            // sidebar to it, which opens its messages. The column layout's sidebar has no
+            // subscription rows and shows the messages beside the table, so it stays put.
+            guard LayoutSetting.current == .tree, selectedEntityID != oldValue, let id = selectedEntityID else { return }
+            let target: SidebarSelection
+            switch id {
+            case .queue(let name):
+                target = .queue(name)
+            case .subscription(let id):
+                guard let sub = topics.lazy.flatMap(\.subscriptions).first(where: { $0.id == id }) else { return }
+                target = .subscription(topic: sub.topic, name: sub.name)
+            }
+            switch selection {
+            case .topic?, .subscription?, .allDeadLetters?:
+                if selection != target { selection = target }
+            default: break
+            }
+        }
+    }
     /// Filters the rows of the entity table (subscriptions/queues); reset when the sidebar selection changes.
     var entityFilter = ""
 
@@ -97,14 +136,15 @@ final class AppModel {
     }
 
     /// Validates and saves a connection, then connects to it.
-    func add(name: String, connectionString: String) async throws {
+    /// `connecting` is false when adding from Settings, which should not switch the main window.
+    func add(name: String, connectionString: String, connecting: Bool = true) async throws {
         let parsed = try ConnectionString(connectionString)
         try await ManagementClient(connection: parsed).testConnection()
         let saved = SavedConnection(name: name.isEmpty ? parsed.namespace : name, host: parsed.host)
         store.setSecret(connectionString, for: saved)
         connections.append(saved)
         store.save(connections)
-        await connect(saved)
+        if connecting { await connect(saved) }
     }
 
     func testConnection(_ connectionString: String) async throws {
@@ -177,7 +217,7 @@ final class AppModel {
     /// What ⌘R refreshes: the selected subscription, else the selected topic, else everything.
     var refreshScopeDescription: String {
         if let entity = selectedEntity { return "Refresh \(entity.fullName)" }
-        if case .topic(let name)? = selection { return "Refresh topic \(name)" }
+        if let name = selection?.topicName { return "Refresh topic \(name)" }
         if case .queue(let name)? = selection { return "Refresh queue \(name)" }
         return "Refresh all topics"
     }
@@ -202,7 +242,7 @@ final class AppModel {
                 lastRefreshed = Date()
                 log.add("Refreshed \(entity.fullName): \(fresh.deadLetterCount) dead-lettered, \(fresh.activeCount) active.")
             } catch { fail(error, doing: "Refreshing \(entity.fullName)") }
-        } else if case .topic(let name)? = selection {
+        } else if let name = selection?.topicName {
             await refresh(EntityRef(kind: .topic, name: name))
         } else if case .queue(let name)? = selection {
             await refresh(EntityRef(kind: .queue, name: name))
@@ -268,7 +308,7 @@ final class AppModel {
         guard ok else { return }
         switch ref.kind {
         case .queue: if selection == .queue(ref.name) { selection = nil }
-        case .topic: if selection == .topic(ref.name) { selection = nil }
+        case .topic: if selection?.topicName == ref.name { selection = nil }
         }
         await refresh()
     }
@@ -369,7 +409,7 @@ final class AppModel {
         let rows: [EntityRow]
         let requireDeadLetters: Bool
         switch selection {
-        case .topic(let name):
+        case .topic(let name), .subscription(let name, _):
             rows = (topics.first { $0.name == name }?.subscriptions ?? []).map(EntityRow.init)
             requireDeadLetters = false
         case .queue(let name):
