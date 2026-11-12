@@ -197,7 +197,7 @@ struct ContentView: View {
                 HStack(spacing: 8) {
                     Text("All dead-letters").foregroundStyle(isSelected ? .white : .primary)
                     Spacer()
-                    CountPill(count: total, solid: !isSelected)
+                    CountPill(count: total)
                 }
                 .padding(.horizontal, 8).padding(.vertical, 6)
                 .background {
@@ -324,7 +324,7 @@ private struct SidebarRow: View {
             }
             Spacer(minLength: 4)
             if isDisabled { Image(systemName: "pause.circle").foregroundStyle(.secondary).help("Disabled") }
-            if count > 0 { CountPill(count: count, solid: true) }
+            if count > 0 { CountPill(count: count) }
         }
         .padding(.vertical, 1)
     }

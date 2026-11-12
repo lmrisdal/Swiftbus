@@ -87,8 +87,6 @@ struct CountPill: View {
     enum Kind { case deadLetter, active, transfer }
     let count: Int
     var kind: Kind = .deadLetter
-    /// Sidebar rows use a solid pill; tables use a tinted one that stays readable when selected.
-    var solid = false
 
     private var tint: Color {
         switch kind {
@@ -103,15 +101,10 @@ struct CountPill: View {
             .font(.system(.caption, design: .rounded).monospacedDigit().weight(.bold))
             .contentTransition(.numericText(value: Double(count)))
             .padding(.horizontal, 7).padding(.vertical, 2)
-            .foregroundStyle(count == 0 ? AnyShapeStyle(.tertiary) : solid ? AnyShapeStyle(.white) : AnyShapeStyle(tint))
+            .foregroundStyle(count == 0 ? AnyShapeStyle(.tertiary) : AnyShapeStyle(tint))
             .background {
                 if count > 0 {
-                    if solid {
-                        Capsule().fill(LinearGradient(colors: [tint, tint.darkened(0.15)], startPoint: .top, endPoint: .bottom))
-                            .shadow(color: tint.opacity(0.35), radius: 2, y: 1)
-                    } else {
-                        Capsule().fill(tint.opacity(0.15))
-                    }
+                    Capsule().fill(tint.opacity(0.15))
                 }
             }
             .animation(.snappy, value: count)

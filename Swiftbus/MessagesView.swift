@@ -380,8 +380,8 @@ struct RunProgressSheet: View {
                         Text(title(run)).font(.title3.weight(.semibold))
                         Text(summary(run)).font(.callout).foregroundStyle(.secondary)
                         HStack(spacing: 6) {
-                            if run.succeeded > 0 { CountPill(count: run.succeeded, kind: .active, solid: true) }
-                            if run.failed > 0 { CountPill(count: run.failed, kind: .deadLetter, solid: true) }
+                            if run.succeeded > 0 { CountPill(count: run.succeeded, kind: .active) }
+                            if run.failed > 0 { CountPill(count: run.failed, kind: .deadLetter) }
                         }
                     }
                 }
@@ -475,7 +475,7 @@ struct MetricChip: View {
     var body: some View {
         HStack(spacing: 4) {
             Text(label).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-            CountPill(count: count, kind: kind, solid: kind == .deadLetter)
+            CountPill(count: count, kind: kind)
         }
     }
 }
