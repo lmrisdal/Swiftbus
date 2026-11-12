@@ -111,6 +111,27 @@ final class AppModel {
         try await ManagementClient(connection: ConnectionString(connectionString)).testConnection()
     }
 
+    /// Renames a saved connection and, when `connectionString` is given, replaces its secret after
+    /// validating it. Reconnects if the edited connection is the active one.
+    func update(_ connection: SavedConnection, name: String, connectionString: String?) async throws {
+        var updated = connection
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        if let connectionString, !connectionString.isEmpty {
+            let parsed = try ConnectionString(connectionString)
+            try await ManagementClient(connection: parsed).testConnection()
+            store.setSecret(connectionString, for: updated)
+            updated.host = parsed.host
+            if trimmed.isEmpty { updated.name = parsed.namespace }
+        }
+        if !trimmed.isEmpty { updated.name = trimmed }
+        guard let i = connections.firstIndex(where: { $0.id == connection.id }) else { return }
+        connections[i] = updated
+        store.save(connections)
+        if activeConnection?.id == connection.id {
+            if connectionString?.isEmpty == false { await connect(updated) } else { activeConnection = updated }
+        }
+    }
+
     func remove(_ connection: SavedConnection) {
         store.deleteSecret(for: connection)
         connections.removeAll { $0.id == connection.id }

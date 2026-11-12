@@ -19,6 +19,7 @@ struct ContentView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
     @State private var showingAddConnection = false
+    @State private var showingManageConnections = false
     @State private var queuesExpanded = true
     @State private var topicsExpanded = true
     @State private var hoveringFilter = false
@@ -54,9 +55,8 @@ struct ContentView: View {
                     }
                     Divider()
                     Button("Add connection…") { showingAddConnection = true }
-                    if let active = model.activeConnection {
-                        Button("Remove \(active.name)", role: .destructive) { model.remove(active) }
-                    }
+                    Button("Manage connections…") { showingManageConnections = true }
+                        .disabled(model.connections.isEmpty)
                 }
             }
             ToolbarItem(placement: .navigation) {
@@ -77,6 +77,7 @@ struct ContentView: View {
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { [model] in model.logWidth = $0 }
         }
         .sheet(isPresented: $showingAddConnection) { ConnectionSheet() }
+        .sheet(isPresented: $showingManageConnections) { ManageConnectionsSheet() }
         .sheet(item: $sendTarget) { SendMessagesSheet(target: $0) }
         .sheet(item: $subscriptionTopic) { CreateSubscriptionSheet(topic: $0.name) }
         .confirmationDialog(pending.map(confirmationTitle) ?? "", isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
