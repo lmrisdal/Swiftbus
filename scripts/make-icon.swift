@@ -1,5 +1,5 @@
 #!/usr/bin/env swift
-// Renders the app icon (a tray of messages with a red dead-letter badge) into the asset catalog.
+// Renders the app icon (a tray of messages on a blue rounded square) into the asset catalog.
 // Usage: swift scripts/make-icon.swift
 import AppKit
 
@@ -24,23 +24,10 @@ func render(px: Int) -> Data {
         if let symbol = NSImage(systemSymbolName: "tray.full.fill", accessibilityDescription: nil)?
             .withSymbolConfiguration(config) {
             let size = symbol.size
-            symbol.draw(in: NSRect(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2 - s * 0.02,
+            symbol.draw(in: NSRect(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2,
                                    width: size.width, height: size.height))
         }
 
-        // Red badge: the dead-letter count.
-        let d = s * 0.26
-        let badge = NSRect(x: body.maxX - d * 0.95, y: body.maxY - d * 0.95, width: d, height: d)
-        NSColor(red: 0.95, green: 0.2, blue: 0.2, alpha: 1).setFill()
-        NSBezierPath(ovalIn: badge).fill()
-        NSColor.white.setStroke()
-        let ring = NSBezierPath(ovalIn: badge.insetBy(dx: d * 0.04, dy: d * 0.04))
-        ring.lineWidth = d * 0.08
-        ring.stroke()
-        let mark = NSAttributedString(string: "!", attributes: [
-            .font: NSFont.systemFont(ofSize: d * 0.62, weight: .heavy), .foregroundColor: NSColor.white])
-        let ms = mark.size()
-        mark.draw(at: NSPoint(x: badge.midX - ms.width / 2, y: badge.midY - ms.height / 2))
         return true
     }
     let rep = NSBitmapImageRep(data: image.tiffRepresentation!)!

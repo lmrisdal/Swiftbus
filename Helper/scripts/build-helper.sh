@@ -30,8 +30,9 @@ mkdir -p "$DEST"
 
 # Xcode exports many variables that MSBuild reads as properties (and renamed the output), so run clean.
 # /usr/bin comes first so `clang` is the SDK-aware shim rather than the bare toolchain binary.
+# TMPDIR must survive: dotnet's first-run setup (fresh CI machines) creates a named mutex there.
 for RID in $RIDS; do
-    env -i HOME="$HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin:$DOTNET_DIR:/opt/homebrew/bin:/usr/local/share/dotnet" \
+    env -i HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" PATH="/usr/bin:/bin:/usr/sbin:/sbin:$DOTNET_DIR:/opt/homebrew/bin:/usr/local/share/dotnet" \
         DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 \
         "$DOTNET" publish "${SRCROOT:?}/Helper/SwiftbusHelper/SwiftbusHelper.csproj" \
         -c Release -r "$RID" -o "$OUT/$RID" --nologo -v quiet -p:NuGetAudit=false -p:AssemblyName=swiftbus-helper
