@@ -1,0 +1,9 @@
+.DS_Store
+xcuserdata/
+DerivedData/
+build/
+.build/
+.swiftpm/
+*.xcuserstate
+Helper/**/bin/
+Helper/**/obj/
