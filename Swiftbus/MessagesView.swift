@@ -272,7 +272,7 @@ struct MessageInspector: View {
                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
                 .padding([.horizontal, .bottom], 10)
             }
-            .background(.background.secondary)
+            .background(Color(nsColor: .windowBackgroundColor))
             .frame(minWidth: 250)
 
             Form {
@@ -322,6 +322,8 @@ struct MessageInspector: View {
                 }
             }
             .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(Color(nsColor: .windowBackgroundColor))
             .frame(minWidth: 280)
         }
     }
