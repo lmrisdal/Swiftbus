@@ -46,18 +46,3 @@ in `Helper/helper.entitlements` so it runs inside the app sandbox. Debug builds 
 your Mac's architecture; Release builds contain a universal one.
 
 Tests: `swift test` in `Packages/ServiceBusKit`. To regenerate the app icon: `swift scripts/make-icon.swift`.
-
-## Sharing the app (signing and notarization)
-
-1. Product → Archive, then **Distribute App → Direct Distribution** with a Developer ID Application
-   certificate. Xcode signs the app and the helper (hardened runtime is on) and offers to notarize.
-2. Or from the command line, after exporting the archive to `Swiftbus.app`:
-
-   ```bash
-   ditto -c -k --keepParent Swiftbus.app Swiftbus.zip
-   xcrun notarytool submit Swiftbus.zip --keychain-profile "<profile>" --wait
-   xcrun stapler staple Swiftbus.app
-   ```
-
-The helper must keep its `app-sandbox` and `inherit` entitlements; without them macOS refuses to start
-it from inside the sandboxed app.

@@ -1,0 +1,81 @@
+# Builds every push to main and every pull request. Pushes to main also refresh a single rolling
+# draft release ("next") with the latest build and auto-generated notes since the last release.
+# The draft is a preview only: publish a version by pushing a tag (see release.yml).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      # Only sign/notarize builds that end up in the draft release, not every PR.
+      sign: ${{ github.event_name == 'push' }}
+    secrets: inherit
+
+  draft-release:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: draft-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.artifact }}
+          path: dist
+
+      - name: Replace the rolling draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.build.outputs.version }}
+          SIGNED: ${{ needs.build.outputs.signed }}
+          NOTARIZED: ${{ needs.build.outputs.notarized }}
+        run: |
+          set -euo pipefail
+          TAG=next
+          old_ids=$(gh api "repos/$GH_REPO/releases?per_page=100" \
+            --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id")
+
+          generated=$(gh api "repos/$GH_REPO/releases/generate-notes" \
+            -f tag_name="$TAG" -f target_commitish="$GITHUB_SHA" --jq .body)
+          if [ "$NOTARIZED" = "true" ]; then
+            signing="Signed with Developer ID and notarized."
+          elif [ "$SIGNED" = "true" ]; then
+            signing="Signed with Developer ID but **not notarized**."
+          else
+            signing="**Not signed.** macOS will block it on first launch; right-click → Open, or run \`xattr -dr com.apple.quarantine Swiftbus.app\`."
+          fi
+          {
+            echo "> Rolling build of \`main\` at ${GITHUB_SHA:0:7} (${VERSION}). Replaced on every push; push a \`v*\` tag to release."
+            echo ">"
+            echo "> $signing"
+            echo
+            echo "$generated"
+          } > notes.md
+
+          gh release create "$TAG" dist/* \
+            --draft \
+            --target "$GITHUB_SHA" \
+            --title "Next release (${VERSION})" \
+            --notes-file notes.md
+
+          # Remove the drafts this one replaces only after the new one exists.
+          for id in $old_ids; do
+            gh api -X DELETE "repos/$GH_REPO/releases/$id"
+          done

@@ -27,6 +27,8 @@ the `MessagingClient` protocol, so the helper could later be replaced by a pure-
 ```
 .
 ├── AGENTS.md                      ← this file
+├── .github/workflows/             ← build.yml (reusable: test, archive, sign/notarize, zip),
+│                                    ci.yml (PRs + main, rolling "next" draft), release.yml (v* tags)
 ├── README.md                      ← user-facing docs, build & notarization steps
 ├── Swiftbus.xcodeproj             ← app project (schemes: Swiftbus, ServiceBusKit)
 ├── Swiftbus/                      ← app target (file-system-synchronized group)
@@ -166,6 +168,8 @@ dotnet publish Helper/SwiftbusHelper/SwiftbusHelper.csproj -c Release -r osx-arm
 - The helper is signed with `Helper/helper.entitlements` (`app-sandbox` + `inherit`). Without both,
   macOS refuses to launch it from the sandboxed app. Don't remove them.
 - The app target has `ENABLE_USER_SCRIPT_SANDBOXING = NO` so the build phase can run `dotnet`.
+- `build-helper.sh` passes `OTHER_CODE_SIGN_FLAGS` to `codesign`; CI uses it for `--timestamp`, which
+  notarization requires on the helper too.
 - Regenerate the icon with `swift scripts/make-icon.swift`.
 - Running the app against a real namespace needs a connection string with Manage, Send and Listen
   rights. Never commit connection strings or keys; tests must not hit Azure.

@@ -1,0 +1,188 @@
+# Reusable build: runs the package tests, archives a universal Release build of Swiftbus (with the
+# .NET helper) and uploads a zipped Swiftbus.app as a workflow artifact.
+#
+# Signing is optional. Without the secrets below the app is ad-hoc signed, which runs locally but
+# Gatekeeper will quarantine it on other Macs. With them it is signed with Developer ID and notarized.
+#
+#   MACOS_CERTIFICATE           base64 of a Developer ID Application .p12 (certificate + private key)
+#   MACOS_CERTIFICATE_PASSWORD  password of that .p12
+#   APPLE_TEAM_ID               10-character team ID
+#   APPLE_API_KEY               contents of an App Store Connect API key (.p8)   (optional: skips notarization)
+#   APPLE_API_KEY_ID            that key's Key ID
+#   APPLE_API_ISSUER_ID         the Issuer ID shown above the keys list
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Version to stamp into the app (a tag such as v1.2.3). Empty uses the project's MARKETING_VERSION plus a dev suffix.
+        type: string
+        default: ""
+      sign:
+        description: Sign and notarize when the signing secrets are available.
+        type: boolean
+        default: true
+    outputs:
+      version:
+        description: Display version of the build, e.g. 1.2.3 or 0.1.0-dev.42
+        value: ${{ jobs.build.outputs.version }}
+      artifact:
+        description: Name of the uploaded workflow artifact
+        value: ${{ jobs.build.outputs.artifact }}
+      signed:
+        description: "'true' when signed with Developer ID"
+        value: ${{ jobs.build.outputs.signed }}
+      notarized:
+        description: "'true' when notarized and stapled"
+        value: ${{ jobs.build.outputs.notarized }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.version.outputs.display }}
+      artifact: ${{ steps.version.outputs.artifact }}
+      signed: ${{ steps.signing.outputs.signed }}
+      notarized: ${{ steps.notarize.outputs.notarized }}
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Package tests
+        working-directory: Packages/ServiceBusKit
+        run: swift test
+
+      - name: Resolve version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            display="${INPUT_VERSION#v}"
+          else
+            base=$(grep -m1 'MARKETING_VERSION' Swiftbus.xcodeproj/project.pbxproj | sed -E 's/.*= *([^;]+);.*/\1/')
+            display="${base}-dev.${GITHUB_RUN_NUMBER}"
+          fi
+          # CFBundleShortVersionString must be plain numbers, so drop any pre-release suffix there.
+          echo "display=$display" >> "$GITHUB_OUTPUT"
+          echo "marketing=${display%%-*}" >> "$GITHUB_OUTPUT"
+          echo "build=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "artifact=Swiftbus-$display" >> "$GITHUB_OUTPUT"
+          echo "Version $display (build $GITHUB_RUN_NUMBER)"
+
+      - name: Import signing certificate
+        id: signing
+        env:
+          WANT_SIGNING: ${{ inputs.sign }}
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ "$WANT_SIGNING" != "true" ] || [ -z "$MACOS_CERTIFICATE" ] || [ -z "$APPLE_TEAM_ID" ]; then
+            echo "No signing requested or no certificate configured; the app will be ad-hoc signed."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 24)
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/cert.p12"
+          echo "keychain=$KEYCHAIN" >> "$GITHUB_OUTPUT"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Archive
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+          KEYCHAIN: ${{ steps.signing.outputs.keychain }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MARKETING_VERSION: ${{ steps.version.outputs.marketing }}
+          BUILD_NUMBER: ${{ steps.version.outputs.build }}
+        run: |
+          if [ "$SIGNED" = "true" ]; then
+            # OTHER_CODE_SIGN_FLAGS also reaches build-helper.sh, so the helper gets a secure timestamp too.
+            SIGNING=(CODE_SIGN_STYLE=Manual "CODE_SIGN_IDENTITY=Developer ID Application"
+                     "DEVELOPMENT_TEAM=$APPLE_TEAM_ID" "OTHER_CODE_SIGN_FLAGS=--timestamp --keychain $KEYCHAIN")
+          else
+            SIGNING=(CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=)
+          fi
+          xcodebuild archive \
+            -project Swiftbus.xcodeproj \
+            -scheme Swiftbus \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -archivePath "$RUNNER_TEMP/Swiftbus.xcarchive" \
+            ONLY_ACTIVE_ARCH=NO \
+            "MARKETING_VERSION=$MARKETING_VERSION" \
+            "CURRENT_PROJECT_VERSION=$BUILD_NUMBER" \
+            "${SIGNING[@]}"
+          mkdir -p dist
+          ditto "$RUNNER_TEMP/Swiftbus.xcarchive/Products/Applications/Swiftbus.app" dist/Swiftbus.app
+          lipo -info dist/Swiftbus.app/Contents/MacOS/Swiftbus dist/Swiftbus.app/Contents/Helpers/swiftbus-helper
+          codesign --verify --deep --strict --verbose=2 dist/Swiftbus.app
+
+      - name: Notarize
+        id: notarize
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          if [ -z "$APPLE_API_KEY" ] || [ -z "$APPLE_API_KEY_ID" ] || [ -z "$APPLE_API_ISSUER_ID" ]; then
+            echo "No App Store Connect API key configured; skipping notarization."
+            echo "notarized=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          KEY_FILE="$RUNNER_TEMP/AuthKey_$APPLE_API_KEY_ID.p8"
+          printf '%s\n' "$APPLE_API_KEY" > "$KEY_FILE"
+          trap 'rm -f "$KEY_FILE"' EXIT
+          ditto -c -k --keepParent dist/Swiftbus.app "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+            --key "$KEY_FILE" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER_ID" \
+            --wait --timeout 30m
+          xcrun stapler staple dist/Swiftbus.app
+          spctl --assess --type execute --verbose=2 dist/Swiftbus.app
+          echo "notarized=true" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        env:
+          ARTIFACT: ${{ steps.version.outputs.artifact }}
+        run: |
+          cd dist
+          ditto -c -k --keepParent Swiftbus.app "$ARTIFACT.zip"
+          shasum -a 256 "$ARTIFACT.zip" > "$ARTIFACT.zip.sha256"
+          rm -rf Swiftbus.app
+          ls -l
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.artifact }}
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Remove signing keychain
+        if: always() && steps.signing.outputs.keychain != ''
+        env:
+          KEYCHAIN: ${{ steps.signing.outputs.keychain }}
+        run: security delete-keychain "$KEYCHAIN" || true

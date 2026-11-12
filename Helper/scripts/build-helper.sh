@@ -8,6 +8,9 @@ if ! command -v dotnet >/dev/null; then
     echo "error: the .NET 10 SDK is required to build the messaging helper (https://dot.net)" >&2
     exit 1
 fi
+# Call dotnet by absolute path: it may live outside the fixed PATH below (e.g. ~/.dotnet from setup-dotnet in CI).
+DOTNET="$(command -v dotnet)"
+DOTNET_DIR="$(dirname "$DOTNET")"
 
 # Debug builds use the host architecture; Release builds are universal (arm64 + x86_64) via lipo.
 case "$(uname -m)" in
@@ -28,9 +31,9 @@ mkdir -p "$DEST"
 # Xcode exports many variables that MSBuild reads as properties (and renamed the output), so run clean.
 # /usr/bin comes first so `clang` is the SDK-aware shim rather than the bare toolchain binary.
 for RID in $RIDS; do
-    env -i HOME="$HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/share/dotnet" \
+    env -i HOME="$HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin:$DOTNET_DIR:/opt/homebrew/bin:/usr/local/share/dotnet" \
         DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 \
-        dotnet publish "${SRCROOT:?}/Helper/SwiftbusHelper/SwiftbusHelper.csproj" \
+        "$DOTNET" publish "${SRCROOT:?}/Helper/SwiftbusHelper/SwiftbusHelper.csproj" \
         -c Release -r "$RID" -o "$OUT/$RID" --nologo -v quiet -p:NuGetAudit=false -p:AssemblyName=swiftbus-helper
 done
 
@@ -44,5 +47,7 @@ fi
 
 IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:--}"
 [ -z "$IDENTITY" ] && IDENTITY="-"
-codesign --force --sign "$IDENTITY" --options runtime \
+# OTHER_CODE_SIGN_FLAGS carries e.g. `--timestamp --keychain …` for Developer ID builds in CI.
+# shellcheck disable=SC2086
+codesign --force --sign "$IDENTITY" --options runtime ${OTHER_CODE_SIGN_FLAGS:-} \
     --entitlements "$SRCROOT/Helper/helper.entitlements" "$DEST/swiftbus-helper"
