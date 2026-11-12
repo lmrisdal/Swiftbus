@@ -52,19 +52,10 @@ final class AppModel {
     /// Filters the rows of the entity table (subscriptions/queues); reset when the sidebar selection changes.
     var entityFilter = ""
 
-    /// Seconds between automatic refreshes; 0 turns it off.
     /// Whether the activity log inspector is open, and how wide it is. Shared so the detail
     /// toolbar can make room for the log (see `ActivityLogToolbar`).
     var showingLog = false
     var logWidth: CGFloat = 320
-
-    var autoRefreshSeconds: Int = UserDefaults.standard.integer(forKey: "autoRefreshSeconds") {
-        didSet {
-            UserDefaults.standard.set(autoRefreshSeconds, forKey: "autoRefreshSeconds")
-            restartAutoRefresh()
-        }
-    }
-    private var autoRefreshTask: Task<Void, Never>?
 
     private var client: ManagementClient?
     /// Reads and resends dead-letters through the bundled .NET helper. Started lazily on first use.
@@ -77,7 +68,6 @@ final class AppModel {
     init() {
         connections = store.load()
         backfillHosts()
-        restartAutoRefresh()
     }
 
     // MARK: Connections
@@ -314,26 +304,12 @@ final class AppModel {
         topics[t].subscriptions[s] = fresh
     }
 
-    private func restartAutoRefresh() {
-        autoRefreshTask?.cancel()
-        guard autoRefreshSeconds > 0 else { autoRefreshTask = nil; return }
-        let interval = autoRefreshSeconds
-        autoRefreshTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(interval))
-                if Task.isCancelled { break }
-                await self?.refresh(quiet: true)
-            }
-        }
-    }
-
     private func fail(_ error: Error, doing what: String) {
         errorMessage = error.localizedDescription
         log.add("\(what) failed: \(error.localizedDescription)", level: .error)
     }
 
-    /// `quiet` is for automatic refreshes: failures are logged but don't pop up an alert.
-    func refresh(quiet: Bool = false) async {
+    func refresh() async {
         guard let client, !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
@@ -346,8 +322,7 @@ final class AppModel {
             let dead = topics.reduce(0) { $0 + $1.deadLetterCount } + queues.reduce(0) { $0 + $1.deadLetterCount }
             log.add("Loaded \(queues.count) queues, \(topics.count) topics, \(dead) dead-lettered messages.", level: .info)
         } catch {
-            if quiet { log.add("Automatic refresh failed: \(error.localizedDescription)", level: .error) }
-            else { fail(error, doing: "Refresh") }
+            fail(error, doing: "Refresh")
         }
     }
 

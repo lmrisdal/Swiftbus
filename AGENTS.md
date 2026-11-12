@@ -32,7 +32,7 @@ the `MessagingClient` protocol, so the helper could later be replaced by a pure-
 ├── Swiftbus/                      ← app target (file-system-synchronized group)
 │   ├── SwiftbusApp.swift          ← @main, creates AppModel, installs AppCommands
 │   ├── AppModel.swift             ← @MainActor @Observable root state: connections, topics,
-│   │                                queues, sidebar selection, auto-refresh, MessagingClient
+│   │                                queues, sidebar selection, MessagingClient
 │   ├── ConnectionStore.swift      ← saved connections: names in UserDefaults, secrets in Keychain
 │   ├── ConnectionSheet.swift      ← "Add connection" sheet
 │   ├── ContentView.swift          ← NavigationSplitView: sidebar + entity list

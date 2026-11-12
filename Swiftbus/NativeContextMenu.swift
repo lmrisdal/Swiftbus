@@ -25,8 +25,9 @@ private struct NativeContextMenuView: NSViewRepresentable {
 
     /// Transparent overlay that only claims right-clicks (and ctrl-clicks), so left clicks still
     /// reach the row underneath and selection keeps working.
-    final class TriggerView: NSView {
+    final class TriggerView: NSView, NSMenuDelegate {
         var entries: () -> [MenuEntry] = { [] }
+        private var highlight: NSView?
 
         override func hitTest(_ point: NSPoint) -> NSView? {
             guard let event = NSApp.currentEvent else { return nil }
@@ -35,7 +36,39 @@ private struct NativeContextMenuView: NSViewRepresentable {
             return isMenuClick ? super.hitTest(point) : nil
         }
 
-        override func menu(for event: NSEvent) -> NSMenu? { build(entries()) }
+        override func menu(for event: NSEvent) -> NSMenu? {
+            let menu = build(entries())
+            menu.delegate = self
+            return menu
+        }
+
+        // MARK: Clicked-row outline
+
+        /// `NSTableView` outlines the right-clicked row only when it shows the menu itself. This menu
+        /// bypasses that, so draw the same accent ring on the enclosing row while the menu is open.
+        func menuWillOpen(_ menu: NSMenu) {
+            guard highlight == nil, let row = enclosingRowView else { return }
+            let ring = NSView(frame: row.bounds)
+            ring.autoresizingMask = [.width, .height]
+            ring.wantsLayer = true
+            ring.layer?.cornerRadius = 6
+            ring.layer?.cornerCurve = .continuous
+            ring.layer?.borderWidth = 2
+            ring.layer?.borderColor = NSColor.controlAccentColor.cgColor
+            row.addSubview(ring)
+            highlight = ring
+        }
+
+        func menuDidClose(_ menu: NSMenu) {
+            highlight?.removeFromSuperview()
+            highlight = nil
+        }
+
+        private var enclosingRowView: NSTableRowView? {
+            var view = superview
+            while let v = view, !(v is NSTableRowView) { view = v.superview }
+            return view as? NSTableRowView
+        }
 
         private func build(_ entries: [MenuEntry]) -> NSMenu {
             let menu = NSMenu()

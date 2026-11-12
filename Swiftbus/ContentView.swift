@@ -60,16 +60,6 @@ struct ContentView: View {
                 }
             }
             ToolbarItem(placement: .navigation) {
-                Menu("Auto-refresh", systemImage: "timer") {
-                    Picker("Auto-refresh", selection: $model.autoRefreshSeconds) {
-                        Text("Off").tag(0)
-                        Text("Every 30 seconds").tag(30)
-                        Text("Every 60 seconds").tag(60)
-                    }
-                    .pickerStyle(.inline)
-                }
-            }
-            ToolbarItem(placement: .navigation) {
                 Button("Refresh", systemImage: "arrow.clockwise") { Task { await model.refreshSelection() } }
                     .help(model.refreshScopeDescription)
                     .keyboardShortcut("r")
@@ -106,7 +96,6 @@ struct ContentView: View {
     @ViewBuilder private var sidebar: some View {
         @Bindable var model = model
         VStack(spacing: 0) {
-            if model.activeConnection != nil { NamespaceCard().padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 4) }
             List(selection: $model.selection) {
                 Section(isExpanded: $queuesExpanded) {
                     ForEach(model.visibleQueues) { queue in
@@ -303,30 +292,6 @@ struct ActivityLogToolbar: ToolbarContent {
 
 // MARK: - Sidebar pieces
 
-/// The connected namespace's name and endpoint at the top of the sidebar.
-private struct NamespaceCard: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text(model.activeConnection?.name ?? "").font(.headline)
-            if let host = model.activeHost {
-                Text("sb://\(host)").foregroundStyle(.secondary).textSelection(.enabled)
-            }
-        }
-            .lineLimit(1)
-            .truncationMode(.middle)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
-            .contextMenu {
-                Button("Refresh") { Task { await model.refresh() } }
-                    .disabled(model.isLoading)
-            }
-    }
-}
-
 private struct SidebarHeader: View {
     let title: String
     let count: Int
@@ -419,9 +384,9 @@ struct SubscriptionTable: View {
     private func queueOverview(_ queue: Queue) -> some View {
         ScrollView {
             VStack(spacing: 10) {
+                StatTile(title: "Active", value: queue.activeCount, systemImage: "bolt.fill", tint: Theme.active)
                 StatTile(title: "Dead-lettered", value: queue.deadLetterCount, systemImage: "exclamationmark.triangle.fill",
                          tint: Theme.deadLetter, emphasized: queue.deadLetterCount > 0)
-                StatTile(title: "Active", value: queue.activeCount, systemImage: "bolt.fill", tint: Theme.active)
                 StatTile(title: "Transfer dead-lettered", value: queue.transferDeadLetterCount,
                          systemImage: "arrow.left.arrow.right", tint: Theme.transfer)
             }

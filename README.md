@@ -14,7 +14,7 @@ An Azure Service Bus manager for macOS.
   subscription (topics), send test messages, or purge messages / dead-letters. Delete and purge ask first and
   can't be undone. Renaming isn't offered: Service Bus has no rename operation.
 
-Also included: an activity log (⌥⌘L), automatic refresh every 30 or 60 seconds, and a retry button for
+Also included: an activity log (⌥⌘L) and a retry button for
 messages that failed to resend.
 
 ## Requirements
