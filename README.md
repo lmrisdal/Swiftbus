@@ -10,6 +10,8 @@ An Azure Service Bus manager for macOS.
 - Browse a subscription's dead-letter queue: reason, error description, enqueued time, properties
   and message body.
 - Resend selected messages to the topic and remove them from the dead-letter queue, or delete them.
+- Right-click a message to repair and resubmit it (edit body, system and typed application properties,
+  optionally remove the original from the dead-letter queue), resubmit it, save it as JSON, or delete it.
 - Right-click a queue or topic in the sidebar to disable/enable, delete, refresh, copy its URL, create a
   subscription (topics), send test messages, or purge messages / dead-letters. Delete and purge ask first and
   can't be undone. Renaming isn't offered: Service Bus has no rename operation.

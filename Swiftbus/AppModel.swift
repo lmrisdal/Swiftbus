@@ -394,6 +394,24 @@ final class AppModel {
         } catch { fail(error, doing: what); return false }
     }
 
+    /// Reloads one queue's or subscription's counts after messages were deleted, resent or resubmitted,
+    /// without reloading the open message list (the model already removed what it acted on).
+    func refreshCounts(of entity: EntityRow) async {
+        guard let client else { return }
+        do {
+            if !entity.isQueue {
+                // A resend goes to the topic, so sibling subscriptions' counts can change too: reload them all.
+                replace(topic: try await client.topic(name: entity.path))
+            } else {
+                replace(queue: try await client.queue(name: entity.path))
+            }
+        } catch { fail(error, doing: "Refreshing \(entity.fullName)") }
+    }
+
+    private func replace(topic fresh: Topic) {
+        if let i = topics.firstIndex(where: { $0.name == fresh.name }) { topics[i] = fresh }
+    }
+
     private func replace(queue fresh: Queue) {
         if let i = queues.firstIndex(where: { $0.name == fresh.name }) { queues[i] = fresh }
     }

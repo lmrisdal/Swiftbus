@@ -1,7 +1,7 @@
 import SwiftUI
 
 extension FocusedValues {
-    @Entry var deadLetterModel: DeadLetterModel?
+    @Entry var messageListModel: MessageListModel?
     @Entry var selectQueue: ((QueueKind) -> Void)?
     @Entry var focusSearch: (() -> Void)?
     @Entry var toggleActivityLog: (() -> Void)?
@@ -9,7 +9,7 @@ extension FocusedValues {
 
 /// View-menu commands that act on whatever the front window is showing.
 struct AppCommands: Commands {
-    @FocusedValue(\.deadLetterModel) private var messages
+    @FocusedValue(\.messageListModel) private var messages
     @FocusedValue(\.selectQueue) private var selectQueue
     @FocusedValue(\.focusSearch) private var focusSearch
     @FocusedValue(\.toggleActivityLog) private var toggleActivityLog

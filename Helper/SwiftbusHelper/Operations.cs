@@ -109,7 +109,7 @@ public sealed class Operations : IAsyncDisposable
         results.AddRange(wanted.Select(s => new ItemResult
         {
             SequenceNumber = s, Ok = false, Error = subQueue == SubQueue.None
-                ? "Message not found in the active queue (already received?)."
+                ? "Message is locked by another receiver or no longer in the queue."
                 : "Message not found in the dead-letter queue (already handled?)."
         }));
         return results;
@@ -123,7 +123,8 @@ public sealed class Operations : IAsyncDisposable
         {
             ContentType = string.IsNullOrWhiteSpace(r.ContentType) ? null : r.ContentType,
             Subject = string.IsNullOrWhiteSpace(r.Subject) ? null : r.Subject,
-            MessageId = string.IsNullOrWhiteSpace(r.MessageId) ? Guid.NewGuid().ToString() : r.MessageId
+            MessageId = string.IsNullOrWhiteSpace(r.MessageId) ? Guid.NewGuid().ToString() : r.MessageId,
+            CorrelationId = string.IsNullOrWhiteSpace(r.CorrelationId) ? null : r.CorrelationId
         };
         foreach (var p in r.Properties ?? new()) m.ApplicationProperties[p.Name] = ParseProperty(p);
         await sender.SendMessageAsync(m);
@@ -196,7 +197,22 @@ public sealed class Operations : IAsyncDisposable
             DeadLetterErrorDescription = m.DeadLetterErrorDescription,
             Body = text,
             BodyBase64 = Convert.ToBase64String(bytes),
-            ApplicationProperties = m.ApplicationProperties.ToDictionary(p => p.Key, p => Convert.ToString(p.Value, System.Globalization.CultureInfo.InvariantCulture) ?? "")
+            ApplicationProperties = m.ApplicationProperties.ToDictionary(p => p.Key, p => PropertyText(p.Value)),
+            ApplicationPropertyTypes = m.ApplicationProperties.ToDictionary(p => p.Key, p => p.Value?.GetType().Name ?? "String")
+        };
+    }
+
+    /// Text form of a property value that <see cref="ParseProperty"/> (and the app's validation) can read back.
+    /// Dates use ISO 8601 in UTC rather than the culture's short format.
+    private static string PropertyText(object? value)
+    {
+        const string iso = "yyyy-MM-dd'T'HH:mm:ss'Z'";
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        return value switch
+        {
+            DateTime d => (d.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(d, DateTimeKind.Utc) : d.ToUniversalTime()).ToString(iso, inv),
+            DateTimeOffset d => d.UtcDateTime.ToString(iso, inv),
+            _ => Convert.ToString(value, inv) ?? ""
         };
     }
 

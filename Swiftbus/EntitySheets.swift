@@ -126,7 +126,7 @@ struct SendMessagesSheet: View {
 }
 
 /// A Key / Type / Value table like ServiceBusExplorer's, with add and remove buttons.
-private struct PropertiesEditor: View {
+struct PropertiesEditor: View {
     @Binding var properties: [MessageProperty]
 
     var body: some View {

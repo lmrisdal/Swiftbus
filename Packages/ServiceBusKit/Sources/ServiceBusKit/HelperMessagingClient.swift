@@ -13,6 +13,7 @@ struct HelperRequest: Encodable {
     var contentType: String?
     var subject: String?
     var messageId: String?
+    var correlationId: String?
     var properties: [MessageProperty]?
     var deadLetter: Bool?
 }
@@ -98,7 +99,8 @@ public actor HelperMessagingClient: MessagingClient {
     public func send(topic: String, message: OutgoingMessage) async throws {
         let properties = message.properties.filter { !$0.isBlank }
         _ = try await send(HelperRequest(op: "send", topic: topic, body: message.body, contentType: message.contentType,
-                                         subject: message.subject, messageId: message.messageId, properties: properties))
+                                         subject: message.subject, messageId: message.messageId,
+                                         correlationId: message.correlationId, properties: properties))
     }
 
     public func purge(topic: String, subscription: String?, deadLetter: Bool) async throws -> Int {

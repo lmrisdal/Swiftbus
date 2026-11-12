@@ -39,7 +39,9 @@ the `MessagingClient` protocol, so the helper could later be replaced by a pure-
 │   │                                sidebar + entity table + messages (per Settings)
 │   ├── SettingsView.swift         ← Settings window (⌘,): General (appearance, layout)
 │   ├── ConnectionsSettings.swift  ← Settings › Connections: add, edit, remove saved connections
-│   ├── DeadLetterModel.swift      ← view model for one entity's message list, resend/delete runs
+│   ├── MessageListModel.swift     ← view model for one entity's message list, resend/delete runs
+│   ├── RepairMessageSheet.swift   ← "Repair and resubmit": edit a message and send the copy back
+│   ├── MessageFiles.swift         ← save panel that writes messages as JSON (needs user-selected files)
 │   ├── EntitySheets.swift         ← "Create subscription" and "Send messages" sheets
 │   ├── JSONEditor.swift           ← NSTextView-backed body editor with JSON/XML syntax colouring
 │   ├── SyntaxHighlighter.swift    ← JSON/XML colour spans, shared by the editor and the message inspector
@@ -61,6 +63,7 @@ the `MessagingClient` protocol, so the helper could later be replaced by a pure-
 │   │   ├── HelperMessagingClient.swift← actor that runs swiftbus-helper and speaks JSON lines
 │   │   ├── DeadLetterAnalysis.swift   ← groups dead-letters by normalized reason + description signatures
 │   │   ├── DeadLetterActions.swift    ← batched resend/delete with per-batch progress
+│   │   ├── MessageExport.swift        ← JSON shape of a saved message (typed properties, text or base64 body)
 │   │   ├── JSONFormatter.swift        ← order-preserving JSON pretty-print / minify / validate
 │   │   ├── EditorFormat.swift          ← picks JSON/XML/text from the content type; validate, pretty-print, minify
 │   │   ├── PurgeActions.swift         ← purge a queue, or every subscription of a topic
@@ -81,7 +84,7 @@ the `MessagingClient` protocol, so the helper could later be replaced by a pure-
 ## Architecture and data flow
 
 ```
-SwiftUI views ──► AppModel / DeadLetterModel (@MainActor, @Observable)
+SwiftUI views ──► AppModel / MessageListModel (@MainActor, @Observable)
                      │                         │
                      ▼                         ▼
              ManagementClient          any MessagingClient
@@ -128,7 +131,9 @@ diagnostics only (the app discards it). Keys are camelCase.
 
 Ops: `ping`, `connect`, `peekActive`, `peekDeadLetters`, `resend`, `delete`, `send`, `purge`. `resend`/`delete` take
 `sequenceNumbers` and return per-message `results`. `send` (body, contentType, subject, messageId,
-applicationProperties, count) and `purge` (`deadLetter` flag) return a `count`.
+correlationId, properties, count) and `purge` (`deadLetter` flag) return a `count`.
+Peeked messages carry `applicationPropertyTypes` (.NET type name per key) next to the string values, so a
+repaired copy keeps each property's type; dates are written as ISO 8601 UTC.
 
 **When changing the protocol, update all of these together:**
 `Helper/SwiftbusHelper/Protocol.cs` (DTOs + `ProtocolContext` for AOT), `Program.cs` (dispatch and
@@ -169,7 +174,7 @@ dotnet publish Helper/SwiftbusHelper/SwiftbusHelper.csproj -c Release -r osx-arm
 
 ### Swift
 - Swift 6 language mode with strict concurrency. Model types are `Sendable`; UI state lives in
-  `@MainActor @Observable` classes (`AppModel`, `DeadLetterModel`); process/IO state lives in actors.
+  `@MainActor @Observable` classes (`AppModel`, `MessageListModel`); process/IO state lives in actors.
 - Use Swift Concurrency (`async`/`await`, `Task`), not Combine or completion handlers.
 - **Put logic in ServiceBusKit, not the app target**, whenever it does not need SwiftUI/AppKit. The
   package is where tests live; the app target has no test target.

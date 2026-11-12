@@ -2,21 +2,21 @@ import Foundation
 import Observation
 import ServiceBusKit
 
-/// A table row: either one dead-letter, or a group of them that share a failure reason.
-struct DeadLetterRow: Identifiable, Hashable {
+/// A table row: either one message, or a group of dead-letters that share a failure reason.
+struct MessageRow: Identifiable, Hashable {
     let id: String
     let message: DeadLetterMessage?
     let group: DeadLetterGroup?
-    var children: [DeadLetterRow]?
+    var children: [MessageRow]?
 
-    static func == (a: DeadLetterRow, b: DeadLetterRow) -> Bool { a.id == b.id && a.children?.count == b.children?.count }
+    static func == (a: MessageRow, b: MessageRow) -> Bool { a.id == b.id && a.children?.count == b.children?.count }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 
-    static func single(_ m: DeadLetterMessage) -> DeadLetterRow {
-        DeadLetterRow(id: "m\(m.sequenceNumber)", message: m, group: nil, children: nil)
+    static func single(_ m: DeadLetterMessage) -> MessageRow {
+        MessageRow(id: "m\(m.sequenceNumber)", message: m, group: nil, children: nil)
     }
-    static func grouped(_ g: DeadLetterGroup) -> DeadLetterRow {
-        DeadLetterRow(id: "g\(g.id)", message: nil, group: g, children: g.messages.map(single))
+    static func grouped(_ g: DeadLetterGroup) -> MessageRow {
+        MessageRow(id: "g\(g.id)", message: nil, group: g, children: g.messages.map(single))
     }
 }
 
@@ -76,12 +76,13 @@ struct EntityRow: Identifiable, Hashable {
     }
 }
 
-/// Loads and presents the dead-letter queue of one subscription or queue.
+/// Loads and presents the messages (active, dead-letter or transfer dead-letter) of one subscription or queue.
 @MainActor @Observable
-final class DeadLetterModel {
+final class MessageListModel {
     static let pageSize = 200
 
-    let entity: EntityRow
+    /// Updated by the view when the app reloads the entity, so the header counts stay current.
+    var entity: EntityRow
     private let client: any MessagingClient
     /// Other subscriptions on the same topic (0 for a queue); a resend is delivered to every one whose filter matches.
     let siblingSubscriptionCount: Int
@@ -168,6 +169,41 @@ final class DeadLetterModel {
         await onFinished()
     }
 
+    // MARK: Repair and resubmit
+
+    /// Sends an edited copy of `original` to the queue or topic, then, if asked and the copy was sent, removes
+    /// the original from the dead-letter queue. Returns a user-readable error, or nil on success.
+    func resubmit(_ draft: OutgoingMessage, original: DeadLetterMessage, removeOriginal: Bool) async -> String? {
+        if let issue = draft.propertyProblem { return issue }
+        let topic = entity.path
+        do {
+            try await client.send(topic: topic, message: draft)
+        } catch {
+            log?.add("Resubmitting #\(original.sequenceNumber) to \(topic) failed: \(error.localizedDescription)", level: .error)
+            return error.localizedDescription
+        }
+        log?.add("Resubmitted an edited copy of #\(original.sequenceNumber) to \(topic).", level: .success)
+        if removeOriginal && queue == .deadLetter {
+            let failure: String?
+            do {
+                let result = try await client.delete(topic: topic, subscription: entity.subscription, deadLetter: true,
+                                                     sequenceNumbers: [original.sequenceNumber]).first
+                failure = result?.ok == true ? nil : (result?.error ?? "The original was not found.")
+            } catch {
+                failure = error.localizedDescription
+            }
+            if let failure {
+                log?.add("The copy was sent, but removing #\(original.sequenceNumber) from the dead-letter queue failed: \(failure)", level: .error)
+                await onFinished()
+                return "The copy was sent, but the original could not be removed from the dead-letter queue: \(failure)"
+            }
+            messages.removeAll { $0.sequenceNumber == original.sequenceNumber }
+            selection = []
+        }
+        await onFinished()
+        return nil
+    }
+
     func reload() async {
         messages = []
         selection = []
@@ -206,16 +242,19 @@ final class DeadLetterModel {
         }
     }
 
-    var rows: [DeadLetterRow] {
-        groupByReason ? DeadLetterAnalysis.group(messages).map(DeadLetterRow.grouped) : messages.map(DeadLetterRow.single)
+    var rows: [MessageRow] {
+        groupByReason ? DeadLetterAnalysis.group(messages).map(MessageRow.grouped) : messages.map(MessageRow.single)
     }
 
     /// Every selected message, expanding selected groups.
-    var selectedMessages: [DeadLetterMessage] {
+    var selectedMessages: [DeadLetterMessage] { messages(for: selection) }
+
+    /// The messages behind a set of row IDs (as a context menu passes them), expanding groups, in table order.
+    func messages(for ids: Set<String>) -> [DeadLetterMessage] {
         var seen = Set<Int64>()
         var result: [DeadLetterMessage] = []
-        func visit(_ row: DeadLetterRow) {
-            if selection.contains(row.id) {
+        func visit(_ row: MessageRow) {
+            if ids.contains(row.id) {
                 for m in row.message.map({ [$0] }) ?? row.group?.messages ?? [] where seen.insert(m.sequenceNumber).inserted {
                     result.append(m)
                 }

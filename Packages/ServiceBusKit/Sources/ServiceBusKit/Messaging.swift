@@ -15,6 +15,9 @@ public struct DeadLetterMessage: Sendable, Equatable, Hashable, Identifiable, De
     public let body: String?
     public let bodyBase64: String
     public let applicationProperties: [String: String]
+    /// .NET type name of each application property (e.g. "Int32"), so a repaired copy keeps its types.
+    /// Absent from older helpers, in which case every property is treated as a string.
+    public let applicationPropertyTypes: [String: String]?
 
     public var bodyData: Data { Data(base64Encoded: bodyBase64) ?? Data() }
 
@@ -26,6 +29,20 @@ public struct DeadLetterMessage: Sendable, Equatable, Hashable, Identifiable, De
 }
 
 /// Outcome of resending or deleting one message.
+extension DeadLetterMessage {
+    /// Properties Service Bus adds when it dead-letters a message; they are dropped from a resubmitted copy.
+    public static let deadLetterPropertyKeys: Set<String> = ["DeadLetterReason", "DeadLetterErrorDescription"]
+
+    /// Application properties as typed rows, sorted by key. Unknown .NET types fall back to String.
+    public var typedProperties: [MessageProperty] {
+        applicationProperties.sorted { $0.key < $1.key }.map { key, value in
+            let typeName = applicationPropertyTypes?[key]
+            let type = typeName == "DateTimeOffset" ? .dateTime : (typeName.flatMap(PropertyType.init(rawValue:)) ?? .string)
+            return MessageProperty(key: key, type: type, value: value)
+        }
+    }
+}
+
 public struct MessageResult: Sendable, Equatable, Decodable {
     public let sequenceNumber: Int64
     public let ok: Bool
@@ -109,15 +126,29 @@ public struct OutgoingMessage: Sendable, Equatable {
     public var contentType: String?
     public var subject: String?
     public var messageId: String?
+    public var correlationId: String?
     public var properties: [MessageProperty]
 
     public init(body: String, contentType: String? = nil, subject: String? = nil, messageId: String? = nil,
-                properties: [MessageProperty] = []) {
+                correlationId: String? = nil, properties: [MessageProperty] = []) {
         self.body = body
         self.contentType = contentType
         self.subject = subject
         self.messageId = messageId
+        self.correlationId = correlationId
         self.properties = properties
+    }
+
+    /// A copy of a received message to edit and resubmit ("repair"): same body, system properties and typed
+    /// application properties, minus the dead-letter reason/description Service Bus added.
+    /// Returns nil for a binary body, which cannot be edited as text.
+    public init?(repairing message: DeadLetterMessage, prettyBody: Bool = true) {
+        guard let text = message.body else { return nil }
+        let formatted = BodyFormatter.format(message)
+        self.init(body: prettyBody && formatted.format != .binary ? formatted.text : text,
+                  contentType: message.contentType, subject: message.subject, messageId: message.messageId,
+                  correlationId: message.correlationId,
+                  properties: message.typedProperties.filter { !DeadLetterMessage.deadLetterPropertyKeys.contains($0.key) })
     }
 
     /// The first problem with any property row (blank rows are skipped), or nil if all can be sent.
@@ -146,7 +177,7 @@ public protocol MessagingClient: Sendable {
     /// Permanently removes the given messages from the dead-letter queue (`deadLetter` true) or the active queue.
     /// Active messages are received under a lock, so skipped ones count a delivery attempt.
     func delete(topic: String, subscription: String?, deadLetter: Bool, sequenceNumbers: [Int64]) async throws -> [MessageResult]
-    /// Sends `message` to the queue or topic named `topic`.
+    /// Sends `message` to the queue or topic named `topic`. An empty message ID gets a new GUID.
     func send(topic: String, message: OutgoingMessage) async throws
     /// Permanently deletes every message in the queue/subscription, or in its dead-letter queue. Returns how many were deleted.
     func purge(topic: String, subscription: String?, deadLetter: Bool) async throws -> Int

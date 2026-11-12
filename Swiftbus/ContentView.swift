@@ -368,11 +368,11 @@ struct ContentView: View {
 
     @ViewBuilder private var detailColumn: some View {
         if let entity = model.selectedEntity, let messaging = model.messaging {
-            MessagesView(model: DeadLetterModel(
+            MessagesView(model: MessageListModel(
                 entity: entity, client: messaging,
                 siblingSubscriptionCount: entity.isQueue ? 0 : max((model.topics.first { $0.name == entity.path }?.subscriptions.count ?? 1) - 1, 0),
                 log: model.log,
-                onFinished: { [model] in await model.refresh() }))
+                onFinished: { [model] in await model.refreshCounts(of: entity) }))
                 .id(entity.id)
         } else {
             VStack {
@@ -758,14 +758,35 @@ private struct WindowCloser: NSViewRepresentable {
     let then: () -> Void
 
     func makeNSView(context: Context) -> NSView {
-        let view = NSView()
+        let view = HidingView()
+        view.shouldClose = shouldClose
         guard shouldClose else { return view }
         DispatchQueue.main.async {
-            view.window?.close()
+            let window = view.window
+            window?.close()
+            // SwiftUI reuses this NSWindow when the scene is opened again, so undo the hiding.
+            window?.alphaValue = 1
             then()
         }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {}
+
+    /// Hides the window the moment the view is attached, before it is first drawn on screen, so the
+    /// unwanted main window doesn't flash up while waiting for the async close.
+    final class HidingView: NSView {
+        var shouldClose = false
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window else { return }
+            guard shouldClose else {
+                window.alphaValue = 1
+                return
+            }
+            window.alphaValue = 0
+            window.orderOut(nil)
+        }
+    }
 }

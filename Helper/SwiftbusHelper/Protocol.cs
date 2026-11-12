@@ -19,6 +19,7 @@ public sealed class Request
     public string? ContentType { get; set; }
     public string? Subject { get; set; }
     public string? MessageId { get; set; }
+    public string? CorrelationId { get; set; }
     /// send: typed application properties.
     public List<PropertyDto>? Properties { get; set; }
     /// purge, delete: true (the default for delete) targets the dead-letter queue, false the active messages.
@@ -69,6 +70,8 @@ public sealed class MessageDto
     public string? Body { get; set; }
     public string BodyBase64 { get; set; } = "";
     public Dictionary<string, string> ApplicationProperties { get; set; } = new();
+    /// .NET type name of each application property (Int32, Guid, …), so an edited copy can keep its types.
+    public Dictionary<string, string> ApplicationPropertyTypes { get; set; } = new();
 }
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,

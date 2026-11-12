@@ -3,9 +3,10 @@ import ServiceBusKit
 import SwiftUI
 
 struct MessagesView: View {
-    @State var model: DeadLetterModel
+    @State var model: MessageListModel
     @Environment(AppModel.self) private var app
     @State private var confirming: DeadLetterAction?
+    @State private var repairing: DeadLetterMessage?
     @State private var inspectorFraction: CGFloat = 0.5
     @State private var dragStartHeight: CGFloat?
 
@@ -75,9 +76,13 @@ struct MessagesView: View {
             }
             ActivityLogToolbar(model: app)
         }
-        .focusedSceneValue(\.deadLetterModel, model)
+        .focusedSceneValue(\.messageListModel, model)
         .focusedSceneValue(\.selectQueue, { [model] kind in model.queue = kind })
         .onChange(of: app.messageReloadToken) { Task { await model.reload() } }
+        // The model lives in @State, so it keeps the entity it was created with; pass fresh counts on.
+        .onChange(of: app.selectedEntity) { _, fresh in
+            if let fresh, fresh.id == model.entity.id { model.entity = fresh }
+        }
         .task(id: model.queue) { await model.reload() }
         .confirmationDialog(confirmTitle, isPresented: .init(get: { confirming != nil }, set: { if !$0 { confirming = nil } }),
                             titleVisibility: .visible) {
@@ -89,6 +94,38 @@ struct MessagesView: View {
         } message: { Text(confirmMessage) }
         .sheet(isPresented: .init(get: { model.run != nil }, set: { if !$0 { model.dismissRun() } })) {
             RunProgressSheet(model: model)
+        }
+        .sheet(item: $repairing) { RepairMessageSheet(model: model, original: $0) }
+    }
+
+    /// Right-click menu for message rows. `ids` are the clicked rows (the whole selection when the clicked
+    /// row is part of it); groups expand to their messages.
+    @ViewBuilder
+    private func rowMenu(_ ids: Set<String>) -> some View {
+        let targets = model.messages(for: ids)
+        if !targets.isEmpty {
+            let noun = targets.count == 1 ? "Message" : "\(targets.count) Messages"
+            Button("Repair and Resubmit…", systemImage: "wrench.and.screwdriver") { repairing = targets.first }
+                .disabled(targets.count != 1 || targets.first?.body == nil || model.isRunning)
+            Button("Resubmit \(noun)…", systemImage: "arrow.uturn.forward") {
+                model.selection = ids
+                confirming = .resend
+            }
+            .disabled(model.queue != .deadLetter || model.isRunning)
+            Divider()
+            Button("Save \(noun)…", systemImage: "square.and.arrow.down") {
+                Task {
+                    await MessageFiles.save(targets.map { MessageExport($0) },
+                                            suggestedName: MessageExport.suggestedFileName(for: targets, entity: model.entity.fullName),
+                                            log: app.log)
+                }
+            }
+            Divider()
+            Button("Delete \(noun)…", systemImage: "trash", role: .destructive) {
+                model.selection = ids
+                confirming = .delete
+            }
+            .disabled(model.queue == .transferDeadLetter || model.isRunning)
         }
     }
 
@@ -106,18 +143,14 @@ struct MessagesView: View {
         let topic = model.entity.path
         if confirming == .delete {
             if model.queue == .active {
-                return "The messages are permanently removed from \(model.entity.name) without ever being processed. This cannot be undone.\n\nThey are received under a lock, so a consumer running at the same time may get them first, and any other message passed over to reach them counts one extra delivery attempt."
+                return "The messages are permanently removed from \(model.entity.name) without ever being processed. This cannot be undone."
             }
             return "The messages are permanently removed from the dead-letter queue of \(model.entity.name) without being resent. This cannot be undone."
         }
         if model.entity.isQueue {
             return "A copy of each message is sent back to the queue \(topic), then the original is removed from the dead-letter queue. A message is only removed after its copy was sent."
         }
-        var text = "A copy of each message is sent to the topic \(topic), then the original is removed from the dead-letter queue. A message is only removed after its copy was sent."
-        if model.siblingSubscriptionCount > 0 {
-            text += "\n\nService Bus can only send to a topic, so every other subscription on it (\(model.siblingSubscriptionCount)) whose filter matches will receive the message too, not just \(model.entity.name). That creates duplicates if their filters overlap."
-        }
-        return text
+        return "A copy of each message is sent to the topic \(topic), then the original is removed from the dead-letter queue. A message is only removed after its copy was sent."
     }
 
     @ViewBuilder
@@ -151,7 +184,7 @@ struct MessagesView: View {
 
     /// Active messages have no dead-letter reason or grouping, so they get their own, simpler columns.
     private var activeTable: some View {
-        Table(model.messages.map(DeadLetterRow.single), selection: $model.selection) {
+        Table(model.messages.map(MessageRow.single), selection: $model.selection) {
             TableColumn("Seq") { row in
                 if let m = row.message { Text(m.sequenceNumber, format: .number.grouping(.never)).monospacedDigit().foregroundStyle(.secondary) }
             }.width(min: 36, ideal: 48, max: 72)
@@ -169,6 +202,7 @@ struct MessagesView: View {
                 if let m = row.message { Text(Int64(m.bodySize), format: .byteCount(style: .file)).monospacedDigit() }
             }.width(min: 60, ideal: 80)
         }
+        .contextMenu(forSelectionType: String.self) { ids in rowMenu(ids) }
         .tableChrome(model: model)
     }
 
@@ -205,13 +239,14 @@ struct MessagesView: View {
                 if let m = row.message { Text(Int64(m.bodySize), format: .byteCount(style: .file)).monospacedDigit() }
             }.width(min: 60, ideal: 80)
         }
+        .contextMenu(forSelectionType: String.self) { ids in rowMenu(ids) }
         .tableChrome(model: model)
     }
 }
 
 private extension View {
     /// The loading overlay and "Load more" button shared by both message tables.
-    func tableChrome(model: DeadLetterModel) -> some View {
+    func tableChrome(model: MessageListModel) -> some View {
         // The button lives in a real footer below the table rather than a floating inset:
         // an inset overlaps the table's scroll bars and is easy to miss over busy rows.
         VStack(spacing: 0) {
@@ -228,7 +263,7 @@ private extension View {
                         .font(.callout).foregroundStyle(.secondary)
                     Spacer()
                     Button { Task { await model.loadMore() } } label: {
-                        Label(model.isLoading ? "Loading…" : "Load \(DeadLetterModel.pageSize) more",
+                        Label(model.isLoading ? "Loading…" : "Load \(MessageListModel.pageSize) more",
                               systemImage: "arrow.down.circle.fill")
                     }
                     .buttonStyle(.borderedProminent)
@@ -379,7 +414,7 @@ struct CopyButton: View {
 }
 
 struct RunProgressSheet: View {
-    let model: DeadLetterModel
+    let model: MessageListModel
 
     var body: some View {
         if let run = model.run {
@@ -456,7 +491,7 @@ struct RunProgressSheet: View {
 
 /// Sits above the message table: what this entity is.
 private struct EntityHeader: View {
-    let model: DeadLetterModel
+    let model: MessageListModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
