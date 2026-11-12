@@ -30,11 +30,6 @@ messages that failed to resend.
    `Endpoint=sb://my-namespace.servicebus.windows.net/;SharedAccessKeyName=...;SharedAccessKey=...`
 3. Pick a topic in the sidebar, then a subscription to see its dead-lettered messages.
 
-## Good to know
-
-Service Bus can only send to a topic, not to a single subscription. A resent message goes to every
-subscription whose filter matches it, not just the one it came from.
-
 ## Building from source
 
 You need Xcode and the [.NET 10 SDK](https://dot.net). Open `Swiftbus.xcodeproj` in Xcode, choose

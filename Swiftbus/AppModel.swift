@@ -76,17 +76,41 @@ final class AppModel {
 
     init() {
         connections = store.load()
+        backfillHosts()
         restartAutoRefresh()
-        if let first = connections.first { Task { await connect(first) } }
     }
 
     // MARK: Connections
+
+    /// Connections saved before the host was cached get it from their Keychain entry.
+    private func backfillHosts() {
+        var changed = false
+        for i in connections.indices where connections[i].host == nil {
+            if let secret = store.secret(for: connections[i]), let parsed = try? ConnectionString(secret) {
+                connections[i].host = parsed.host
+                changed = true
+            }
+        }
+        if changed { store.save(connections) }
+    }
+
+    /// Saved connections, most recently opened first (never-opened ones keep their saved order).
+    var connectionsByRecency: [SavedConnection] {
+        connections.enumerated().sorted { a, b in
+            switch (a.element.lastUsed, b.element.lastUsed) {
+            case let (x?, y?): x > y
+            case (_?, nil): true
+            case (nil, _?): false
+            default: a.offset < b.offset
+            }
+        }.map(\.element)
+    }
 
     /// Validates and saves a connection, then connects to it.
     func add(name: String, connectionString: String) async throws {
         let parsed = try ConnectionString(connectionString)
         try await ManagementClient(connection: parsed).testConnection()
-        let saved = SavedConnection(name: name.isEmpty ? parsed.namespace : name)
+        let saved = SavedConnection(name: name.isEmpty ? parsed.namespace : name, host: parsed.host)
         store.setSecret(connectionString, for: saved)
         connections.append(saved)
         store.save(connections)
@@ -101,7 +125,7 @@ final class AppModel {
         store.deleteSecret(for: connection)
         connections.removeAll { $0.id == connection.id }
         store.save(connections)
-        if activeConnection == connection { disconnect() }
+        if activeConnection?.id == connection.id { disconnect() }
     }
 
     private func disconnect() {
@@ -121,7 +145,14 @@ final class AppModel {
             disconnect()
             client = ManagementClient(connection: parsed)
             messaging = HelperMessagingClient(executableURL: Self.helperURL, connectionString: secret)
-            activeConnection = connection
+            var used = connection
+            used.host = parsed.host
+            used.lastUsed = Date()
+            if let i = connections.firstIndex(where: { $0.id == connection.id }) {
+                connections[i] = used
+                store.save(connections)
+            }
+            activeConnection = used
             activeHost = parsed.host
             log.add("Connected to \(connection.name) (\(parsed.host)).", level: .success)
             await refresh()

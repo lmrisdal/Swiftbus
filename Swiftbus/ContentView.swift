@@ -17,6 +17,7 @@ private enum PendingAction: Identifiable {
 
 struct ContentView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
     @State private var showingAddConnection = false
     @State private var queuesExpanded = true
     @State private var topicsExpanded = true
@@ -38,6 +39,11 @@ struct ContentView: View {
         } detail: {
             detailColumn
         }
+        .background(WindowCloser(shouldClose: model.activeConnection == nil) {
+            // The system opens every Window scene at launch (or restores this one). Without a
+            // chosen connection, hand over to the connection picker.
+            openWindow(id: "welcome")
+        })
         .navigationTitle(model.activeConnection?.name ?? "Swiftbus")
         .navigationSubtitle(model.lastRefreshed.map { "Refreshed \($0.formatted(date: .omitted, time: .standard))" } ?? "")
         .toolbar {
@@ -222,9 +228,17 @@ struct ContentView: View {
     @ViewBuilder private var contentColumn: some View {
         if model.activeConnection == nil {
             EmptyState(title: "Connect a namespace", systemImage: "network",
-                       message: "Add a Service Bus connection string to see your queues, topics and dead-letters.") {
-                Button("Add connection…", systemImage: "plus") { showingAddConnection = true }
-                    .buttonStyle(.borderedProminent).controlSize(.large)
+                       message: model.connections.isEmpty
+                           ? "Add a Service Bus connection string to see your queues, topics and dead-letters."
+                           : "Pick a saved connection, or add a new one.") {
+                VStack(spacing: 8) {
+                    ForEach(model.connections) { c in
+                        Button(c.name) { Task { await model.connect(c) } }
+                            .buttonStyle(.borderedProminent).controlSize(.large)
+                    }
+                    Button("Add connection…", systemImage: "plus") { showingAddConnection = true }
+                        .controlSize(.large)
+                }
             }
         } else if model.selection == nil {
             EmptyState(title: "Pick something to inspect", systemImage: "sidebar.left",
@@ -545,4 +559,22 @@ private struct BehindWindowBlur: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+}
+
+/// Closes the hosting window once, on first appearance, when `shouldClose` is true.
+private struct WindowCloser: NSViewRepresentable {
+    let shouldClose: Bool
+    let then: () -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        guard shouldClose else { return view }
+        DispatchQueue.main.async {
+            view.window?.close()
+            then()
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }

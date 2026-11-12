@@ -5,6 +5,10 @@ import ServiceBusKit
 struct SavedConnection: Identifiable, Hashable, Codable {
     var id = UUID()
     var name: String
+    /// Namespace host (not secret), cached so the picker needn't read the Keychain to show it.
+    var host: String?
+    /// When this connection was last opened; the picker preselects the most recent one.
+    var lastUsed: Date?
 }
 
 /// Saved connections: display names in UserDefaults, connection strings in the Keychain.

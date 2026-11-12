@@ -10,7 +10,14 @@ struct SwiftbusApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        Window("Swiftbus", id: "welcome") {
+            WelcomeView()
+                .environment(model)
+        }
+        .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
+
+        Window("Swiftbus", id: "main") {
             ContentView()
                 .environment(model)
                 .frame(minWidth: 1100, minHeight: 560)
