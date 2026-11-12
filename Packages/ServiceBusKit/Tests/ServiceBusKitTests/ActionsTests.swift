@@ -15,6 +15,7 @@ private struct MockClient: MessagingClient {
     var failMessage: Int64? = nil
 
     func peekDeadLetters(topic: String, subscription: String?, max: Int, fromSequence: Int64?) async throws -> [DeadLetterMessage] { [] }
+    func peekTransferDeadLetters(topic: String, subscription: String?, max: Int, fromSequence: Int64?) async throws -> [DeadLetterMessage] { [] }
     func peekActive(topic: String, subscription: String?, max: Int, fromSequence: Int64?) async throws -> [DeadLetterMessage] { [] }
     func resend(topic: String, subscription: String?, sequenceNumbers: [Int64]) async throws -> [MessageResult] {
         await recorder.add(sequenceNumbers)

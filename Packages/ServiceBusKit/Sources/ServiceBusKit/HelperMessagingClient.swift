@@ -76,6 +76,11 @@ public actor HelperMessagingClient: MessagingClient {
                                      max: max, fromSequence: fromSequence)).messages ?? []
     }
 
+    public func peekTransferDeadLetters(topic: String, subscription: String?, max: Int, fromSequence: Int64?) async throws -> [DeadLetterMessage] {
+        try await send(HelperRequest(op: "peekTransferDeadLetters", topic: topic, subscription: subscription,
+                                     max: max, fromSequence: fromSequence)).messages ?? []
+    }
+
     public func peekActive(topic: String, subscription: String?, max: Int, fromSequence: Int64?) async throws -> [DeadLetterMessage] {
         try await send(HelperRequest(op: "peekActive", topic: topic, subscription: subscription,
                                      max: max, fromSequence: fromSequence)).messages ?? []

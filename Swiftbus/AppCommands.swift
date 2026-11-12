@@ -32,10 +32,13 @@ struct AppCommands: Commands {
             Button("Show Dead-letter Queue") { selectQueue?(.deadLetter) }
                 .keyboardShortcut("2")
                 .disabled(selectQueue == nil)
+            Button("Show Transfer Dead-letter Queue") { selectQueue?(.transferDeadLetter) }
+                .keyboardShortcut("3")
+                .disabled(selectQueue == nil)
             Toggle("Group by Reason", isOn: Binding(get: { messages?.groupByReason ?? false },
                                                     set: { messages?.groupByReason = $0 }))
                 .keyboardShortcut("g", modifiers: [.command, .option])
-                .disabled(messages == nil || messages?.queue == .active)
+                .disabled(messages == nil || messages?.queue != .deadLetter)
         }
         CommandGroup(after: .textEditing) {
             Button("Find Topics") { focusSearch?() }

@@ -26,6 +26,7 @@ while (await stdin.ReadLineAsync() is { } line)
                 break;
             case "peekActive": response.Messages = await operations.PeekActiveAsync(request); break;
             case "peekDeadLetters": response.Messages = await operations.PeekDeadLettersAsync(request); break;
+            case "peekTransferDeadLetters": response.Messages = await operations.PeekTransferDeadLettersAsync(request); break;
             case "resend": response.Results = await operations.ResendAsync(request); break;
             case "delete": response.Results = await operations.DeleteAsync(request); break;
             case "send": response.Count = await operations.SendAsync(request); break;

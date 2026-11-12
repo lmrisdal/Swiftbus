@@ -23,7 +23,16 @@ struct DeadLetterRow: Identifiable, Hashable {
 enum QueueKind: String, CaseIterable, Identifiable {
     case active = "Active"
     case deadLetter = "Dead-letter"
+    case transferDeadLetter = "Transfer DLQ"
     var id: String { rawValue }
+
+    var loadingTitle: String {
+        switch self {
+        case .deadLetter: "Reading dead-letter queue…"
+        case .transferDeadLetter: "Reading transfer dead-letter queue…"
+        case .active: "Reading active messages…"
+        }
+    }
 }
 
 /// A resend or delete in progress, or just finished.
@@ -168,12 +177,20 @@ final class DeadLetterModel {
 
     private func fetch(from sequence: Int64?) async {
         guard !isLoading else { return }
+        // Service Bus answers a peek on an unused transfer dead-letter queue with a generic
+        // "unable to process the request" error, so skip the call when the counts say it is empty.
+        if queue == .transferDeadLetter && entity.transferDeadLetterCount == 0 {
+            hasMore = false
+            errorMessage = nil
+            return
+        }
         isLoading = true
         defer { isLoading = false }
         do {
             let topic = entity.path, name = entity.subscription
             let page = switch queue {
             case .deadLetter: try await client.peekDeadLetters(topic: topic, subscription: name, max: Self.pageSize, fromSequence: sequence)
+            case .transferDeadLetter: try await client.peekTransferDeadLetters(topic: topic, subscription: name, max: Self.pageSize, fromSequence: sequence)
             case .active: try await client.peekActive(topic: topic, subscription: name, max: Self.pageSize, fromSequence: sequence)
             }
             messages += page

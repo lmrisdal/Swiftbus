@@ -2,7 +2,7 @@ import AppKit
 import ServiceBusKit
 import SwiftUI
 
-struct DeadLetterView: View {
+struct MessagesView: View {
     @State var model: DeadLetterModel
     @Environment(AppModel.self) private var app
     @State private var confirming: DeadLetterAction?
@@ -54,7 +54,7 @@ struct DeadLetterView: View {
                     ForEach(QueueKind.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                .help("Show the dead-letter queue or the active messages")
+                .help("Show active messages, the dead-letter queue or the transfer dead-letter queue")
             }
             ToolbarItemGroup {
                 Button("Resend", systemImage: "arrow.uturn.forward") { confirming = .resend }
@@ -69,7 +69,7 @@ struct DeadLetterView: View {
             ToolbarItem {
                 Toggle("Group by reason", systemImage: "rectangle.3.group", isOn: $model.groupByReason)
                     .help("Group identical failures into one row")
-                    .disabled(model.queue == .active)
+                    .disabled(model.queue != .deadLetter)
             }
             ToolbarItem {
                 Button("Reload", systemImage: "arrow.clockwise") { Task { await model.reload() } }
@@ -128,6 +128,8 @@ struct DeadLetterView: View {
                 }
             } else if model.queue == .deadLetter {
                 EmptyState.allClear("Dead-letter queue is empty", message: "No failed messages in \(model.entity.name).")
+            } else if model.queue == .transferDeadLetter {
+                EmptyState.allClear("Transfer dead-letter queue is empty", message: "No messages failed to transfer in \(model.entity.name).")
             } else {
                 EmptyState(title: "No active messages", systemImage: "tray", message: "Nothing is waiting to be received.")
             }
@@ -140,7 +142,7 @@ struct DeadLetterView: View {
     private var populatedTable: some View {
         switch model.queue {
         case .active: activeTable
-        case .deadLetter: deadLetterTable
+        case .deadLetter, .transferDeadLetter: deadLetterTable
         }
     }
 
@@ -207,25 +209,31 @@ struct DeadLetterView: View {
 private extension View {
     /// The loading overlay and "Load more" button shared by both message tables.
     func tableChrome(model: DeadLetterModel) -> some View {
-        overlay {
-            if model.isLoading && model.messages.isEmpty {
-                LoadingState(title: model.queue == .deadLetter ? "Reading dead-letter queue…" : "Reading active messages…")
-                    .background(.background)
-            }
-        }
-        .safeAreaInset(edge: .bottom) {
-            if model.hasMore {
-                Button { Task { await model.loadMore() } } label: {
-                    Label(model.isLoading ? "Loading…" : "Load \(DeadLetterModel.pageSize) more", systemImage: "arrow.down.circle.fill")
-                        .font(.callout.weight(.semibold))
-                        .padding(.horizontal, 14).padding(.vertical, 6)
-                        .background(Capsule().fill(.regularMaterial))
-                        .overlay(Capsule().strokeBorder(.separator, lineWidth: 0.5))
-                        .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+        // The button lives in a real footer below the table rather than a floating inset:
+        // an inset overlaps the table's scroll bars and is easy to miss over busy rows.
+        VStack(spacing: 0) {
+            overlay {
+                if model.isLoading && model.messages.isEmpty {
+                    LoadingState(title: model.queue.loadingTitle)
+                        .background(.background)
                 }
-                .buttonStyle(.plain)
-                .disabled(model.isLoading)
-                .padding(10)
+            }
+            if model.hasMore {
+                Divider()
+                HStack(spacing: 12) {
+                    Text("\(model.messages.count) loaded")
+                        .font(.callout).foregroundStyle(.secondary)
+                    Spacer()
+                    Button { Task { await model.loadMore() } } label: {
+                        Label(model.isLoading ? "Loading…" : "Load \(DeadLetterModel.pageSize) more",
+                              systemImage: "arrow.down.circle.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+                    .disabled(model.isLoading)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(.bar)
             }
         }
     }

@@ -38,7 +38,7 @@ the `MessagingClient` protocol, so the helper could later be replaced by a pure-
 │   ├── ContentView.swift          ← NavigationSplitView: sidebar + entity list
 │   ├── DeadLetterModel.swift      ← view model for one entity's message list, resend/delete runs
 │   ├── EntitySheets.swift         ← "Create subscription" and "Send messages" sheets
-│   ├── DeadLetterView.swift       ← message table, detail pane, action progress UI
+│   ├── MessagesView.swift         ← message table, detail pane, action progress UI
 │   ├── ActivityLog.swift          ← in-memory log of actions/errors
 │   ├── ActivityLogView.swift      ← activity log window (⌥⌘L)
 │   ├── AppCommands.swift          ← menu commands / keyboard shortcuts

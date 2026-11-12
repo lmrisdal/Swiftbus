@@ -6,7 +6,7 @@ namespace SwiftbusHelper;
 public sealed class Request
 {
     public string Id { get; set; } = "";
-    /// connect | peekDeadLetters | peekActive | resend | delete | send | purge | ping
+    /// connect | peekDeadLetters | peekTransferDeadLetters | peekActive | resend | delete | send | purge | ping
     public string Op { get; set; } = "";
     public string? ConnectionString { get; set; }
     public string? Topic { get; set; }

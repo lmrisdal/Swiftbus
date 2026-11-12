@@ -30,6 +30,9 @@ public sealed class Operations : IAsyncDisposable
 
     public Task<List<MessageDto>> PeekDeadLettersAsync(Request r) => PeekAsync(r, SubQueue.DeadLetter);
 
+    /// Peeks the transfer dead-letter queue: messages that failed while being forwarded to another entity.
+    public Task<List<MessageDto>> PeekTransferDeadLettersAsync(Request r) => PeekAsync(r, SubQueue.TransferDeadLetter);
+
     /// Peeks the subscription's active messages. Peeking takes no lock and does not change delivery counts.
     public Task<List<MessageDto>> PeekActiveAsync(Request r) => PeekAsync(r, SubQueue.None);
 

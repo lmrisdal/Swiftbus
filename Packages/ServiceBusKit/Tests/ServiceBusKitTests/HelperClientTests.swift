@@ -14,7 +14,7 @@ private let echoLoop = """
 while IFS= read -r line; do
   id=$(printf '%s' "$line" | sed -E 's/.*"id":"([^"]*)".*/\\1/')
   case "$line" in
-    *peekDeadLetters*|*peekActive*) printf '{"id":"%s","ok":true,"messages":[{"sequenceNumber":42,"messageId":"m1","enqueuedTime":"2026-11-12T10:15:30.1234567+00:00","deliveryCount":10,"deadLetterReason":"MaxDeliveryCountExceeded","body":"{\\\\"a\\\\":1}","bodyBase64":"eyJhIjoxfQ==","applicationProperties":{"k":"v"}}]}\\n' "$id" ;;
+    *peekDeadLetters*|*peekTransferDeadLetters*|*peekActive*) printf '{"id":"%s","ok":true,"messages":[{"sequenceNumber":42,"messageId":"m1","enqueuedTime":"2026-11-12T10:15:30.1234567+00:00","deliveryCount":10,"deadLetterReason":"MaxDeliveryCountExceeded","body":"{\\\\"a\\\\":1}","bodyBase64":"eyJhIjoxfQ==","applicationProperties":{"k":"v"}}]}\\n' "$id" ;;
     *'"op":"purge"'*) printf '{"id":"%s","ok":true,"count":9}\\n' "$id" ;;
     *'"op":"send"'*) printf '{"id":"%s","ok":true,"count":3}\\n' "$id" ;;
     *resend*) printf '{"id":"%s","ok":true,"results":[{"sequenceNumber":42,"ok":true}]}\\n' "$id" ;;
@@ -41,6 +41,13 @@ done
         #expect(m.applicationProperties == ["k": "v"])
         #expect(m.bodyData == Data(#"{"a":1}"#.utf8))
         #expect(abs(m.enqueuedTime.timeIntervalSince1970 - 1_794_478_530.123) < 0.01)
+    }
+
+    @Test func peekTransferDeadLettersUsesItsOwnOperation() async throws {
+        let client = HelperMessagingClient(executableURL: try fakeHelper(echoLoop), connectionString: "cs")
+        let messages = try await client.peekTransferDeadLetters(topic: "t", subscription: "s", max: 10, fromSequence: nil)
+        await client.shutdown()
+        #expect(messages.count == 1)
     }
 
     @Test func peekActiveUsesItsOwnOperation() async throws {

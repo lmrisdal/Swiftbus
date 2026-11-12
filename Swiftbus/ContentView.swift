@@ -199,7 +199,6 @@ struct ContentView: View {
                 model.selection = isSelected ? nil : .allDeadLetters
             } label: {
                 HStack(spacing: 8) {
-                    IconTile(systemImage: "exclamationmark.triangle.fill", colors: Theme.alertTint)
                     Text("All dead-letters").foregroundStyle(isSelected ? .white : .primary)
                     Spacer()
                     CountPill(count: total, solid: !isSelected)
@@ -237,7 +236,7 @@ struct ContentView: View {
 
     @ViewBuilder private var detailColumn: some View {
         if let entity = model.selectedEntity, let messaging = model.messaging {
-            DeadLetterView(model: DeadLetterModel(
+            MessagesView(model: DeadLetterModel(
                 entity: entity, client: messaging,
                 siblingSubscriptionCount: entity.isQueue ? 0 : max((model.topics.first { $0.name == entity.path }?.subscriptions.count ?? 1) - 1, 0),
                 log: model.log,

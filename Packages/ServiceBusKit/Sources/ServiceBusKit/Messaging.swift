@@ -74,6 +74,8 @@ public struct OutgoingMessage: Sendable, Equatable {
 /// could later be replaced by a pure Swift AMQP client.
 public protocol MessagingClient: Sendable {
     func peekDeadLetters(topic: String, subscription: String?, max: Int, fromSequence: Int64?) async throws -> [DeadLetterMessage]
+    /// Peeks the transfer dead-letter queue (messages that failed while being auto-forwarded).
+    func peekTransferDeadLetters(topic: String, subscription: String?, max: Int, fromSequence: Int64?) async throws -> [DeadLetterMessage]
     /// Peeks the subscription's active (not dead-lettered) messages without locking them.
     func peekActive(topic: String, subscription: String?, max: Int, fromSequence: Int64?) async throws -> [DeadLetterMessage]
     /// Sends a copy of each message to the topic, then removes the original only if the send succeeded.
