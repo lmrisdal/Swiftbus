@@ -443,13 +443,11 @@ struct RunProgressSheet: View {
 
 // MARK: - Header
 
-/// Sits above the message table: what this entity is, and for dead-letters a bar showing
-/// how the loaded messages split by failure reason.
+/// Sits above the message table: what this entity is.
 private struct EntityHeader: View {
     let model: DeadLetterModel
 
     var body: some View {
-        let groups = model.queue == .deadLetter ? DeadLetterAnalysis.group(model.messages) : []
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 EntityIcon(isQueue: model.entity.isQueue, size: 20)
@@ -465,17 +463,8 @@ private struct EntityHeader: View {
                 }
             }
             .frame(height: Theme.paneHeaderHeight)
-            // Always reserve the band so the table below stays level with the entity list's.
-            ZStack(alignment: .top) {
-                if groups.count > 0 {
-                    ReasonBreakdown(groups: groups, total: model.messages.count)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-            }
-            .frame(height: Theme.paneSubheaderHeight, alignment: .top)
         }
         .padding(.horizontal, 14)
-        .animation(.snappy, value: groups.count)
     }
 }
 
@@ -488,101 +477,6 @@ struct MetricChip: View {
             Text(label).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
             CountPill(count: count, kind: kind, solid: kind == .deadLetter)
         }
-    }
-}
-
-/// A stacked bar of failure reasons with a legend. Only covers the messages loaded so far.
-private struct ReasonBreakdown: View {
-    let groups: [DeadLetterGroup]
-    let total: Int
-
-    /// More hues than this are hard to tell apart, so the long tail is folded into "Other".
-    private static let maxSegments = 5
-
-    private struct Segment: Identifiable {
-        let id: String
-        let reason: String?
-        let count: Int
-        let isOther: Bool
-        var otherReasons: [String] = []
-    }
-
-    /// Groups that share a reason (but differ in description) are merged; the tail beyond
-    /// `maxSegments` becomes one "Other" segment.
-    private var segments: [Segment] {
-        var order: [String?] = []
-        var counts: [String?: Int] = [:]
-        for g in groups {
-            if counts[g.reason] == nil { order.append(g.reason) }
-            counts[g.reason, default: 0] += g.count
-        }
-        let sorted = order.map { ($0, counts[$0]!) }.sorted { $0.1 > $1.1 }
-        // Folding a single reason into "Other" would hide it for nothing.
-        let shown = sorted.count > Self.maxSegments + 1 ? Array(sorted.prefix(Self.maxSegments)) : sorted
-        var result = shown.map { Segment(id: $0.0 ?? "\u{0}", reason: $0.0, count: $0.1, isOther: false) }
-        let rest = sorted.dropFirst(shown.count)
-        if !rest.isEmpty {
-            result.append(Segment(id: "\u{0}other", reason: nil, count: rest.reduce(0) { $0 + $1.1 }, isOther: true,
-                                  otherReasons: rest.map { "\($0.0 ?? "(no reason)"): \($0.1)" }))
-        }
-        return result
-    }
-
-    var body: some View {
-        let segments = segments
-        VStack(alignment: .leading, spacing: 6) {
-            GeometryReader { geo in
-                HStack(spacing: 2) {
-                    ForEach(segments) { s in
-                        color(for: s)
-                            .frame(width: max(3, (geo.size.width - CGFloat(segments.count - 1) * 2) * CGFloat(s.count) / CGFloat(max(total, 1))))
-                            .help(help(for: s))
-                    }
-                }
-                .clipShape(Capsule())
-            }
-            .frame(height: 7)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(segments) { s in
-                        if s.isOther {
-                            OtherTag(count: s.count, reasons: s.otherReasons.count).help(help(for: s))
-                        } else {
-                            ReasonTag(reason: s.reason, count: s.count, maxTextWidth: 320)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func color(for s: Segment) -> Color {
-        s.isOther ? Color.secondary.opacity(0.35) : Theme.color(forReason: s.reason)
-    }
-
-    private func help(for s: Segment) -> String {
-        s.isOther ? s.otherReasons.joined(separator: "\n") : "\(s.reason ?? "(no reason)"): \(s.count)"
-    }
-}
-
-/// The legend entry for the folded tail of reasons.
-private struct OtherTag: View {
-    let count: Int
-    let reasons: Int
-    var body: some View {
-        HStack(spacing: 5) {
-            Circle().fill(Color.secondary.opacity(0.35)).frame(width: 7, height: 7)
-            Text("\(reasons) other reasons")
-            Text(count, format: .number)
-                .font(.caption2.monospacedDigit().weight(.bold))
-                .padding(.horizontal, 5).padding(.vertical, 1)
-                .background(Capsule().fill(.quaternary))
-        }
-        .font(.callout.weight(.medium))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 8).padding(.vertical, 2)
-        .background(Capsule().fill(.quinary))
-        .overlay(Capsule().strokeBorder(.separator, lineWidth: 0.5))
     }
 }
 

@@ -347,15 +347,20 @@ struct SubscriptionTable: View {
             if let queue = selectedQueue {
                 // A queue is a single entity: a one-row table would only repeat the header, so
                 // show its numbers instead. Its messages open in the detail column on selection.
-                queueStatus(queue)
+                if queue.isDisabled {
+                    queueStatus(queue)
+                }
                 Divider()
                 queueOverview(queue)
             } else {
-                filterField
                 Divider()
                 table
+                Divider()
+                filterField
             }
         }
+        // Picking a row moves focus to the table, so keyboard navigation works right away.
+        .onChange(of: model.selectedEntityID) { searchFocused.wrappedValue = false }
     }
 
     private var selectedQueue: Queue? {
@@ -365,8 +370,7 @@ struct SubscriptionTable: View {
 
     // MARK: Queue overview
 
-    /// Same height as the filter band, so the divider lines up with the detail pane's. Only a
-    /// disabled queue says anything here; the normal state needs no label.
+    /// Only shown for a disabled queue; the normal state needs no label.
     private func queueStatus(_ queue: Queue) -> some View {
         HStack(spacing: 6) {
             if queue.isDisabled {
@@ -378,8 +382,7 @@ struct SubscriptionTable: View {
         .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
-        .padding(.top, 4)
-        .frame(height: Theme.paneSubheaderHeight, alignment: .top)
+        .padding(.bottom, 8)
     }
 
     private func queueOverview(_ queue: Queue) -> some View {
@@ -425,7 +428,7 @@ struct SubscriptionTable: View {
         .frame(height: Theme.paneHeaderHeight)
     }
 
-    /// Sits above the table so it reads as filtering these rows, not the detail column.
+    /// Sits below the table so it reads as filtering these rows, not the detail column.
     private var filterField: some View {
         @Bindable var model = model
         return HStack(spacing: 6) {
@@ -442,14 +445,14 @@ struct SubscriptionTable: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .font(.callout)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
         .background(Capsule().fill(.quaternary.opacity(0.6)))
         .overlay(Capsule().strokeBorder(searchFocused.wrappedValue ? Color.accentColor.opacity(0.7) : .clear, lineWidth: 1.5))
         .animation(.easeOut(duration: 0.15), value: searchFocused.wrappedValue)
-        .padding(.horizontal, 12)
-        .padding(.top, 4)
-        .frame(height: Theme.paneSubheaderHeight, alignment: .top)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
     }
 
     private var table: some View {

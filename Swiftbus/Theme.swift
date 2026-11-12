@@ -9,8 +9,6 @@ import SwiftUI
 enum Theme {
     /// Height of the title band atop both the entity list and the detail pane, so they align.
     static let paneHeaderHeight: CGFloat = 56
-    /// Height of the band under it (entity filter / reason breakdown), so both tables start level.
-    static let paneSubheaderHeight: CGFloat = 50
     static let brandTop = Color(red: 0.24, green: 0.50, blue: 0.98)
     static let brandBottom = Color(red: 0.10, green: 0.22, blue: 0.60)
     static let brand = LinearGradient(colors: [brandTop, brandBottom], startPoint: .topLeading, endPoint: .bottomTrailing)
