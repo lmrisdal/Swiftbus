@@ -1,4 +1,5 @@
 import AppKit
+import ServiceBusKit
 import SwiftUI
 
 // MARK: - Palette
@@ -6,6 +7,10 @@ import SwiftUI
 /// The app's visual identity, taken from the icon: a deep blue gradient with an alert-red accent.
 /// Everything here is presentation only; keep it free of model logic.
 enum Theme {
+    /// Height of the title band atop both the entity list and the detail pane, so they align.
+    static let paneHeaderHeight: CGFloat = 56
+    /// Height of the band under it (entity filter / reason breakdown), so both tables start level.
+    static let paneSubheaderHeight: CGFloat = 50
     static let brandTop = Color(red: 0.24, green: 0.50, blue: 0.98)
     static let brandBottom = Color(red: 0.10, green: 0.22, blue: 0.60)
     static let brand = LinearGradient(colors: [brandTop, brandBottom], startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -26,8 +31,9 @@ enum Theme {
     /// recognisable across subscriptions and sessions.
     private static let reasonHues: [Double] = [0.0, 0.07, 0.12, 0.55, 0.62, 0.75, 0.85, 0.93, 0.45, 0.30]
 
+    /// Hashes the reason's signature, so a raw reason and its group share a colour.
     static func color(forReason reason: String?) -> Color {
-        guard let reason, !reason.isEmpty else { return .gray }
+        guard let reason = DeadLetterAnalysis.signature(reason) else { return .gray }
         // FNV-1a: stable across launches, unlike `hashValue`.
         var hash: UInt64 = 0xcbf29ce484222325
         for byte in reason.utf8 { hash = (hash ^ UInt64(byte)) &* 0x100000001b3 }
@@ -65,11 +71,13 @@ struct IconTile: View {
 struct EntityIcon: View {
     let isQueue: Bool
     var size: CGFloat = 13
+    /// `.increased` when the row sits on the selection highlight, where the accent color would vanish.
+    @Environment(\.backgroundProminence) private var prominence
 
     var body: some View {
         Image(systemName: isQueue ? "tray" : "tray.2")
             .font(.system(size: size))
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(prominence == .increased ? AnyShapeStyle(.white) : AnyShapeStyle(Color.accentColor))
             .frame(width: size * 1.5)
     }
 }
@@ -163,12 +171,16 @@ struct StatTile: View {
 struct ReasonTag: View {
     let reason: String?
     var count: Int?
+    /// Caps the text width so a long reason doesn't push other tags away; the full text is in the tooltip.
+    var maxTextWidth: CGFloat? = nil
 
     var body: some View {
         let tint = Theme.color(forReason: reason)
         HStack(spacing: 5) {
             Circle().fill(tint).frame(width: 7, height: 7)
-            Text(reason ?? "(no reason)").lineLimit(1)
+            Text(reason ?? "(no reason)")
+                .lineLimit(1).truncationMode(.tail)
+                .frame(maxWidth: maxTextWidth, alignment: .leading)
             if let count {
                 Text(count, format: .number)
                     .font(.caption2.monospacedDigit().weight(.bold))
@@ -180,6 +192,7 @@ struct ReasonTag: View {
         .padding(.horizontal, 8).padding(.vertical, 2)
         .background(Capsule().fill(tint.opacity(0.13)))
         .overlay(Capsule().strokeBorder(tint.opacity(0.3), lineWidth: 0.5))
+        .help(reason ?? "")
     }
 }
 

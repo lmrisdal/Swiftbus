@@ -104,7 +104,8 @@ struct ContentView: View {
             List(selection: $model.selection) {
                 Section(isExpanded: $queuesExpanded) {
                     ForEach(model.visibleQueues) { queue in
-                        SidebarRow(title: queue.name, isQueue: true, count: queue.deadLetterCount, isDisabled: queue.isDisabled)
+                        SidebarRow(title: queue.name, isQueue: true, count: queue.deadLetterCount, isDisabled: queue.isDisabled,
+                                   counts: "(\(queue.activeCount), \(queue.deadLetterCount), \(queue.transferDeadLetterCount))")
                             .tag(SidebarSelection.queue(queue.name))
                             .nativeContextMenu { entityMenu(EntityRef(kind: .queue, name: queue.name)) }
                     }
@@ -332,10 +333,16 @@ private struct SidebarRow: View {
     let isQueue: Bool
     let count: Int
     var isDisabled = false
+    /// Shown after the name, e.g. "(active, dead-letter, transfer)" for a queue.
+    var counts: String?
     var body: some View {
         HStack(spacing: 8) {
             EntityIcon(isQueue: isQueue)
             Text(title).lineLimit(1).truncationMode(.middle).foregroundStyle(isDisabled ? .secondary : .primary)
+            if let counts {
+                Text(counts).font(.callout.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                    .help("Active, dead-letter, transfer dead-letter")
+            }
             Spacer(minLength: 4)
             if isDisabled { Image(systemName: "pause.circle").foregroundStyle(.secondary).help("Disabled") }
             if count > 0 { CountPill(count: count, solid: true) }
@@ -358,25 +365,85 @@ struct SubscriptionTable: View {
     var body: some View {
         VStack(spacing: 0) {
             summary
-            filterField
-            Divider()
-            table
+            if let queue = selectedQueue {
+                // A queue is a single entity: a one-row table would only repeat the header, so
+                // show its numbers instead. Its messages open in the detail column on selection.
+                queueStatus(queue)
+                Divider()
+                queueOverview(queue)
+            } else {
+                filterField
+                Divider()
+                table
+            }
         }
     }
 
-    /// Headline numbers for the rows in view, so the size of a problem is visible at a glance.
+    private var selectedQueue: Queue? {
+        guard case .queue(let name)? = model.selection else { return nil }
+        return model.queues.first { $0.name == name }
+    }
+
+    // MARK: Queue overview
+
+    /// Same height as the filter band, so the divider lines up with the detail pane's. Only a
+    /// disabled queue says anything here; the normal state needs no label.
+    private func queueStatus(_ queue: Queue) -> some View {
+        HStack(spacing: 6) {
+            if queue.isDisabled {
+                Image(systemName: "pause.circle")
+                Text("Disabled: not accepting messages")
+            }
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.top, 4)
+        .frame(height: Theme.paneSubheaderHeight, alignment: .top)
+    }
+
+    private func queueOverview(_ queue: Queue) -> some View {
+        ScrollView {
+            VStack(spacing: 10) {
+                StatTile(title: "Dead-lettered", value: queue.deadLetterCount, systemImage: "exclamationmark.triangle.fill",
+                         tint: Theme.deadLetter, emphasized: queue.deadLetterCount > 0)
+                StatTile(title: "Active", value: queue.activeCount, systemImage: "bolt.fill", tint: Theme.active)
+                StatTile(title: "Transfer dead-lettered", value: queue.transferDeadLetterCount,
+                         systemImage: "arrow.left.arrow.right", tint: Theme.transfer)
+            }
+            .padding(12)
+        }
+    }
+
+    /// The selected topic/queue and its totals, in the same fixed-height band as the detail
+    /// pane's header so the two dividers line up.
     private var summary: some View {
         let rows = model.visibleEntities
         let dead = rows.reduce(0) { $0 + $1.deadLetterCount }
         let active = rows.reduce(0) { $0 + $1.activeCount }
-        let transfer = rows.reduce(0) { $0 + $1.transferDeadLetterCount }
-        return HStack(spacing: 10) {
-            StatTile(title: "Dead-lettered", value: dead, systemImage: "exclamationmark.triangle.fill",
-                     tint: Theme.deadLetter, emphasized: dead > 0)
-            StatTile(title: "Active", value: active, systemImage: "bolt.fill", tint: Theme.active)
-            StatTile(title: "Transfer DL", value: transfer, systemImage: "arrow.left.arrow.right", tint: Theme.transfer)
+        let title: String
+        let subtitle: String
+        let isQueue: Bool
+        switch model.selection {
+        case .topic(let name)?: (title, subtitle, isQueue) = (name, "Topic", false)
+        case .queue(let name)?: (title, subtitle, isQueue) = (name, "Queue", true)
+        default: (title, subtitle, isQueue) = ("All dead-letters", "Topics and queues", false)
         }
-        .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 4)
+        return HStack(spacing: 10) {
+            EntityIcon(isQueue: isQueue, size: 20)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.title3.weight(.semibold)).lineLimit(1)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            HStack(spacing: 6) {
+                MetricChip(label: "Active", count: active, kind: .active)
+                MetricChip(label: "DLQ", count: dead, kind: .deadLetter)
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: Theme.paneHeaderHeight)
     }
 
     /// Sits above the table so it reads as filtering these rows, not the detail column.
@@ -402,7 +469,8 @@ struct SubscriptionTable: View {
         .overlay(Capsule().strokeBorder(searchFocused.wrappedValue ? Color.accentColor.opacity(0.7) : .clear, lineWidth: 1.5))
         .animation(.easeOut(duration: 0.15), value: searchFocused.wrappedValue)
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.top, 4)
+        .frame(height: Theme.paneSubheaderHeight, alignment: .top)
     }
 
     private var table: some View {
@@ -414,15 +482,21 @@ struct SubscriptionTable: View {
                     TableColumn("Topic") { Text($0.isQueue ? "—" : $0.path).foregroundStyle($0.isQueue ? .secondary : .primary) }
                     TableColumn("Name") { nameCell($0) }
                     TableColumn("Active", value: \.activeCount) { activeCell($0) }
+                        .width(min: 60, ideal: 90, max: 110)
                     TableColumn("Dead-letter", value: \.deadLetterCount) { deadLetterCell($0) }
+                        .width(min: 60, ideal: 90, max: 110)
                     TableColumn("Transfer DL", value: \.transferDeadLetterCount) { transferCell($0) }
+                        .width(min: 60, ideal: 90, max: 110)
                 }
             } else {
                 Table(sortedEntities, selection: $model.selectedEntityID, sortOrder: $sortOrder) {
                     TableColumn("Name") { nameCell($0) }
                     TableColumn("Active", value: \.activeCount) { activeCell($0) }
+                        .width(min: 60, ideal: 90, max: 110)
                     TableColumn("Dead-letter", value: \.deadLetterCount) { deadLetterCell($0) }
+                        .width(min: 60, ideal: 90, max: 110)
                     TableColumn("Transfer DL", value: \.transferDeadLetterCount) { transferCell($0) }
+                        .width(min: 60, ideal: 90, max: 110)
                 }
             }
         }

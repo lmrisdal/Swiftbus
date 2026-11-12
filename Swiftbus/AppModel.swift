@@ -40,7 +40,8 @@ final class AppModel {
             case .topic(let name)?:
                 if case .subscription? = selectedEntityID, selectedEntity?.path != name { selectedEntityID = nil }
             case .queue(let name)?:
-                if selectedEntity?.path != name || selectedEntity?.isQueue != true { selectedEntityID = nil }
+                // A queue shows an overview rather than a table to pick from (see SubscriptionTable), so it selects itself.
+                selectedEntityID = .queue(name)
             default: break
             }
         }

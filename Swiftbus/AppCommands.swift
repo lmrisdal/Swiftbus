@@ -2,6 +2,7 @@ import SwiftUI
 
 extension FocusedValues {
     @Entry var deadLetterModel: DeadLetterModel?
+    @Entry var selectQueue: ((QueueKind) -> Void)?
     @Entry var focusSearch: (() -> Void)?
     @Entry var toggleActivityLog: (() -> Void)?
 }
@@ -9,6 +10,7 @@ extension FocusedValues {
 /// View-menu commands that act on whatever the front window is showing.
 struct AppCommands: Commands {
     @FocusedValue(\.deadLetterModel) private var messages
+    @FocusedValue(\.selectQueue) private var selectQueue
     @FocusedValue(\.focusSearch) private var focusSearch
     @FocusedValue(\.toggleActivityLog) private var toggleActivityLog
 
@@ -24,12 +26,12 @@ struct AppCommands: Commands {
                 .keyboardShortcut("b", modifiers: [.command, .shift])
                 .disabled(toggleActivityLog == nil)
             Divider()
-            Button("Show Active Messages") { messages?.queue = .active }
+            Button("Show Active Messages") { selectQueue?(.active) }
                 .keyboardShortcut("1")
-                .disabled(messages == nil)
-            Button("Show Dead-letter Queue") { messages?.queue = .deadLetter }
+                .disabled(selectQueue == nil)
+            Button("Show Dead-letter Queue") { selectQueue?(.deadLetter) }
                 .keyboardShortcut("2")
-                .disabled(messages == nil)
+                .disabled(selectQueue == nil)
             Toggle("Group by Reason", isOn: Binding(get: { messages?.groupByReason ?? false },
                                                     set: { messages?.groupByReason = $0 }))
                 .keyboardShortcut("g", modifiers: [.command, .option])

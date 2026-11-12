@@ -5,9 +5,9 @@ changes. For the user-facing description of the app, see [README.md](README.md).
 
 ## What this is
 
-**Swiftbus** is a native macOS (14+) app for managing Azure Service Bus namespaces, focused on
-dead-letter queues: list topics/subscriptions/queues with their active and dead-letter counts, browse
-dead-lettered (and active) messages, group them by failure reason, and resend or delete them.
+**Swiftbus** is a native macOS (14+) app for managing Azure Service Bus namespaces: list
+topics/subscriptions/queues with their active and dead-letter counts, browse active and dead-lettered
+messages, group dead-letters by failure reason, and resend or delete them.
 
 It is built from three parts:
 
@@ -54,7 +54,7 @@ the `MessagingClient` protocol, so the helper could later be replaced by a pure-
 │   │   ├── Models.swift               ← Topic, Subscription, Queue, counts
 │   │   ├── Messaging.swift            ← `MessagingClient` protocol, DeadLetterMessage, MessageResult
 │   │   ├── HelperMessagingClient.swift← actor that runs swiftbus-helper and speaks JSON lines
-│   │   ├── DeadLetterAnalysis.swift   ← groups dead-letters by reason + description
+│   │   ├── DeadLetterAnalysis.swift   ← groups dead-letters by normalized reason + description signatures
 │   │   ├── DeadLetterActions.swift    ← batched resend/delete with per-batch progress
 │   │   ├── PurgeActions.swift         ← purge a queue, or every subscription of a topic
 │   │   ├── ServiceBusError.swift      ← user-readable error cases
