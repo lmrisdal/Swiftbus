@@ -27,7 +27,7 @@ the `MessagingClient` protocol, so the helper could later be replaced by a pure-
 ```
 .
 ├── AGENTS.md                      ← this file
-├── .github/workflows/             ← build.yml (reusable: test, archive, sign/notarize, zip),
+├── .github/workflows/             ← build.yml (reusable: test, archive, sign/notarize, dmg),
 │                                    ci.yml (PRs + main, rolling "next" draft), release.yml (v* tags)
 ├── README.md                      ← user-facing docs, build & notarization steps
 ├── Swiftbus.xcodeproj             ← app project (schemes: Swiftbus, ServiceBusKit)

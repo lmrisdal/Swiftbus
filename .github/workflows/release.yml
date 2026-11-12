@@ -52,7 +52,7 @@ jobs:
             if [ "$SIGNED" = "true" ]; then
               note="This build is signed with Developer ID but not notarized."
             else
-              note="This build is not signed. macOS will block it on first launch; right-click → Open, or run \`xattr -dr com.apple.quarantine Swiftbus.app\`."
+              note="This build is not signed. macOS will block it on first launch; right-click → Open, or run \`xattr -dr com.apple.quarantine /Applications/Swiftbus.app\`."
             fi
             printf '> %s\n\n' "$note" > notes.md
           else

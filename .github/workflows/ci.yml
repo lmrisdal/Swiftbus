@@ -59,7 +59,7 @@ jobs:
           elif [ "$SIGNED" = "true" ]; then
             signing="Signed with Developer ID but **not notarized**."
           else
-            signing="**Not signed.** macOS will block it on first launch; right-click → Open, or run \`xattr -dr com.apple.quarantine Swiftbus.app\`."
+            signing="**Not signed.** macOS will block it on first launch; right-click → Open, or run \`xattr -dr com.apple.quarantine /Applications/Swiftbus.app\`."
           fi
           {
             echo "> Rolling build of \`main\` at ${GITHUB_SHA:0:7} (${VERSION}). Replaced on every push; push a \`v*\` tag to release."

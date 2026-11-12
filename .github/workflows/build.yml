@@ -1,5 +1,5 @@
 # Reusable build: runs the package tests, archives a universal Release build of Swiftbus (with the
-# .NET helper) and uploads a zipped Swiftbus.app as a workflow artifact.
+# .NET helper) and uploads it as a drag-to-install Swiftbus-<version>.dmg workflow artifact.
 #
 # Signing is optional. Without the secrets below the app is ad-hoc signed, which runs locally but
 # Gatekeeper will quarantine it on other Macs. With them it is signed with Developer ID and notarized.
@@ -141,10 +141,30 @@ jobs:
           lipo -info dist/Swiftbus.app/Contents/MacOS/Swiftbus dist/Swiftbus.app/Contents/Helpers/swiftbus-helper
           codesign --verify --deep --strict --verbose=2 dist/Swiftbus.app
 
+      - name: Create disk image
+        env:
+          ARTIFACT: ${{ steps.version.outputs.artifact }}
+          SIGNED: ${{ steps.signing.outputs.signed }}
+          KEYCHAIN: ${{ steps.signing.outputs.keychain }}
+        run: |
+          # The usual drag-to-install layout: the app next to a link to /Applications.
+          STAGING="$RUNNER_TEMP/dmg"
+          rm -rf "$STAGING"
+          mkdir -p "$STAGING"
+          ditto dist/Swiftbus.app "$STAGING/Swiftbus.app"
+          ln -s /Applications "$STAGING/Applications"
+          hdiutil create -volname Swiftbus -srcfolder "$STAGING" -fs HFS+ -format UDZO -ov "dist/$ARTIFACT.dmg"
+          rm -rf "$STAGING" dist/Swiftbus.app
+          if [ "$SIGNED" = "true" ]; then
+            codesign --sign "Developer ID Application" --timestamp --keychain "$KEYCHAIN" "dist/$ARTIFACT.dmg"
+            codesign --verify --verbose=2 "dist/$ARTIFACT.dmg"
+          fi
+
       - name: Notarize
         id: notarize
         if: steps.signing.outputs.signed == 'true'
         env:
+          ARTIFACT: ${{ steps.version.outputs.artifact }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
@@ -157,22 +177,20 @@ jobs:
           KEY_FILE="$RUNNER_TEMP/AuthKey_$APPLE_API_KEY_ID.p8"
           printf '%s\n' "$APPLE_API_KEY" > "$KEY_FILE"
           trap 'rm -f "$KEY_FILE"' EXIT
-          ditto -c -k --keepParent dist/Swiftbus.app "$RUNNER_TEMP/notarize.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+          # Notarizing the disk image covers the app inside it; the ticket is stapled to the image.
+          xcrun notarytool submit "dist/$ARTIFACT.dmg" \
             --key "$KEY_FILE" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER_ID" \
             --wait --timeout 30m
-          xcrun stapler staple dist/Swiftbus.app
-          spctl --assess --type execute --verbose=2 dist/Swiftbus.app
+          xcrun stapler staple "dist/$ARTIFACT.dmg"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "dist/$ARTIFACT.dmg"
           echo "notarized=true" >> "$GITHUB_OUTPUT"
 
-      - name: Package
+      - name: Checksum
         env:
           ARTIFACT: ${{ steps.version.outputs.artifact }}
         run: |
           cd dist
-          ditto -c -k --keepParent Swiftbus.app "$ARTIFACT.zip"
-          shasum -a 256 "$ARTIFACT.zip" > "$ARTIFACT.zip.sha256"
-          rm -rf Swiftbus.app
+          shasum -a 256 "$ARTIFACT.dmg" > "$ARTIFACT.dmg.sha256"
           ls -l
 
       - uses: actions/upload-artifact@v4
