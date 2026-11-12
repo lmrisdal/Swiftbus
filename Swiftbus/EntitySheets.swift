@@ -42,7 +42,7 @@ struct CreateSubscriptionSheet: View {
     }
 }
 
-/// Composes a text message and sends one or more copies to a queue or topic.
+/// Composes a text message and sends it to a queue or topic.
 struct SendMessagesSheet: View {
     let target: EntityRef
     @Environment(AppModel.self) private var model
@@ -51,60 +51,112 @@ struct SendMessagesSheet: View {
     @State private var contentType = "application/json"
     @State private var subject = ""
     @State private var messageId = ""
-    @State private var properties = ""
-    @State private var count = 1
+    @State private var properties: [MessageProperty] = []
     @State private var isWorking = false
     @State private var problem: String?
 
+    private var format: EditorFormat { EditorFormat.detect(contentType: contentType, body: messageBody) }
+
     var body: some View {
-        Form {
-            Section("Message to \(target.kindName) \(target.name)") {
-                TextEditor(text: $messageBody)
-                    .font(.body.monospaced())
-                    .frame(minHeight: 140)
-                TextField("Content type", text: $contentType)
-                TextField("Subject", text: $subject, prompt: Text("Optional"))
-                TextField("Message ID", text: $messageId, prompt: Text("Optional, generated if empty"))
+        HStack(alignment: .top, spacing: 0) {
+            Form {
+                Section("Message to \(target.kindName) \(target.name)") {
+                    TextField("Content type", text: $contentType)
+                    TextField("Subject", text: $subject, prompt: Text("Optional"))
+                    TextField("Message ID", text: $messageId, prompt: Text("Optional, generated if empty"))
+                }
+                Section {
+                    PropertiesEditor(properties: $properties)
+                } header: {
+                    Text("Application properties")
+                } footer: {
+                    Text("Each value is sent as the chosen type. Rows with no key are ignored.")
+                }
+                if let problem {
+                    Label(problem, systemImage: "exclamationmark.triangle.fill").foregroundStyle(Theme.deadLetter)
+                }
             }
-            Section {
-                TextEditor(text: $properties)
-                    .font(.body.monospaced())
-                    .frame(minHeight: 56)
-            } header: {
-                Text("Application properties")
-            } footer: {
-                Text("One key=value per line. Values are sent as text.")
+            .formStyle(.grouped)
+            .frame(width: 440)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Body").font(.headline)
+                    Spacer()
+                    if format != .text {
+                        if !messageBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            if format.isValid(messageBody) {
+                                Label("Valid \(format.rawValue)", systemImage: "checkmark.circle").foregroundStyle(.secondary)
+                            } else {
+                                Label("Not valid \(format.rawValue)", systemImage: "info.circle").foregroundStyle(.secondary)
+                            }
+                        }
+                        Button("Format") { if let f = format.pretty(messageBody) { messageBody = f } }
+                            .disabled(format.pretty(messageBody) == nil)
+                        Button("Minify") { if let f = format.minified(messageBody) { messageBody = f } }
+                            .disabled(format.minified(messageBody) == nil)
+                    }
+                }
+                .font(.callout)
+                JSONEditor(text: $messageBody, format: format, autoFocus: true)
+                    .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
             }
-            Section {
-                Stepper("Copies: \(count)", value: $count, in: 1...1000)
-            }
-            if let problem {
-                Label(problem, systemImage: "exclamationmark.triangle.fill").foregroundStyle(Theme.deadLetter)
-            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .formStyle(.grouped)
-        .frame(width: 520)
+        .frame(minWidth: 900, idealWidth: 960, minHeight: 440, idealHeight: 520)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-            ToolbarItem(placement: .confirmationAction) {
-                Button(count == 1 ? "Send" : "Send \(count)", action: send).disabled(isWorking)
-            }
+            ToolbarItem(placement: .confirmationAction) { Button("Send", action: send).disabled(isWorking) }
         }
     }
 
     private func send() {
-        let parsed = OutgoingMessage.parseProperties(properties)
-        guard case .success(let props) = parsed else {
-            if case .failure(let error) = parsed { problem = error.localizedDescription }
-            return
-        }
+        let message = OutgoingMessage(body: messageBody, contentType: contentType, subject: subject,
+                                      messageId: messageId, properties: properties)
+        if let issue = message.propertyProblem { problem = issue; return }
         problem = nil
         isWorking = true
-        let message = OutgoingMessage(body: messageBody, contentType: contentType, subject: subject,
-                                      messageId: messageId, applicationProperties: props)
         Task {
-            if await model.send(message, count: count, to: target) { dismiss() }
+            if await model.send(message, to: target) { dismiss() }
             isWorking = false
+        }
+    }
+}
+
+/// A Key / Type / Value table like ServiceBusExplorer's, with add and remove buttons.
+private struct PropertiesEditor: View {
+    @Binding var properties: [MessageProperty]
+
+    var body: some View {
+        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
+            if !properties.isEmpty {
+                GridRow {
+                    Text("Key"); Text("Type"); Text("Value"); Color.clear.frame(width: 20, height: 1)
+                }
+                .font(.caption).foregroundStyle(.secondary)
+            }
+            ForEach($properties) { $property in
+                GridRow {
+                    TextField("Key", text: $property.key).labelsHidden().textFieldStyle(.roundedBorder).frame(minWidth: 100)
+                    Picker("Type", selection: $property.type) {
+                        ForEach(PropertyType.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .labelsHidden().frame(width: 100)
+                    TextField("Value", text: $property.value).labelsHidden().textFieldStyle(.roundedBorder)
+                        .foregroundStyle(property.problem == nil ? Color.primary : Theme.deadLetter)
+                    Button {
+                        properties.removeAll { $0.id == property.id }
+                    } label: { Image(systemName: "minus.circle") }
+                    .buttonStyle(.borderless).help("Remove property")
+                }
+            }
+            GridRow {
+                Button { properties.append(MessageProperty()) } label: { Label("Add property", systemImage: "plus") }
+                    .buttonStyle(.borderless)
+                    .gridCellColumns(4)
+            }
         }
     }
 }

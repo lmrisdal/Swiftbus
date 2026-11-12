@@ -26,7 +26,7 @@ done
 @Suite struct HelperClientTests {
     @Test func sendsAndPurgesReturnTheHelpersCount() async throws {
         let client = HelperMessagingClient(executableURL: try fakeHelper(echoLoop), connectionString: "cs")
-        #expect(try await client.send(topic: "t", message: OutgoingMessage(body: "hi"), count: 3) == 3)
+        try await client.send(topic: "t", message: OutgoingMessage(body: "hi", properties: [MessageProperty(key: "n", type: .int32, value: "1")]))
         #expect(try await client.purge(topic: "t", subscription: "s", deadLetter: true) == 9)
         await client.shutdown()
     }
@@ -67,7 +67,7 @@ done
     @Test func helperErrorsSurface() async throws {
         let client = HelperMessagingClient(executableURL: try fakeHelper(echoLoop), connectionString: "cs")
         await #expect(throws: HelperError.failed("nope")) {
-            try await client.delete(topic: "t", subscription: "s", sequenceNumbers: [1])
+            try await client.delete(topic: "t", subscription: "s", deadLetter: true, sequenceNumbers: [1])
         }
         await client.shutdown()
     }

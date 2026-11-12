@@ -6,11 +6,15 @@ import SwiftUI
 private enum PendingAction: Identifiable {
     case delete(EntityRef)
     case purge(EntityRef, PurgeScope)
+    case deleteSubscription(Subscription)
+    case purgeSubscription(Subscription, PurgeScope)
 
     var id: String {
         switch self {
         case .delete(let ref): "delete/\(ref.id)"
         case .purge(let ref, let scope): "purge/\(ref.id)/\(scope)"
+        case .deleteSubscription(let sub): "delete/\(sub.id)"
+        case .purgeSubscription(let sub, let scope): "purge/\(sub.id)/\(scope)"
         }
     }
 }
@@ -142,6 +146,8 @@ struct ContentView: View {
                 switch action {
                 case .delete(let ref): Task { await model.delete(ref) }
                 case .purge(let ref, let scope): Task { await model.purge(ref, scope: scope) }
+                case .deleteSubscription(let sub): Task { await model.delete(sub) }
+                case .purgeSubscription(let sub, let scope): Task { await model.purge(sub, scope: scope) }
                 }
             }
         } message: { Text(confirmationMessage($0)) }
@@ -176,6 +182,7 @@ struct ContentView: View {
                                                counts: "(\(sub.activeCount), \(sub.deadLetterCount), \(sub.transferDeadLetterCount))",
                                                systemImage: "envelope")
                                         .tag(SidebarSelection.subscription(topic: topic.name, name: sub.name))
+                                        .nativeContextMenu { subscriptionMenu(sub) }
                                 }
                             } label: {
                                 SidebarRow(title: topic.name, isQueue: false, count: topic.deadLetterCount, isDisabled: topic.isDisabled)
@@ -244,17 +251,43 @@ struct ContentView: View {
         return entries
     }
 
+    private func subscriptionMenu(_ sub: Subscription) -> [MenuEntry] {
+        func copy(_ string: String?) {
+            guard let string else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(string, forType: .string)
+        }
+        let disabled = sub.status == "Disabled"
+        return [
+            .item("Delete Subscription…") { pending = .deleteSubscription(sub) },
+            .item(disabled ? "Enable Subscription" : "Disable Subscription") { Task { await model.setDisabled(!disabled, sub) } },
+            .item("Refresh Subscription") { Task { await model.refresh(sub) } },
+            .separator,
+            .item("Copy Subscription URL") { copy(model.url(for: sub)) },
+            .item("Copy Dead-letter Queue URL") { copy(model.url(for: sub, deadLetter: true)) },
+            .separator,
+            .submenu("Purge", [
+                .item("Messages…") { pending = .purgeSubscription(sub, .active) },
+                .item("Dead-letter Queue Messages…") { pending = .purgeSubscription(sub, .deadLetter) },
+                .separator,
+                .item("All Messages…") { pending = .purgeSubscription(sub, .all) },
+            ]),
+        ]
+    }
+
     private func confirmationTitle(_ action: PendingAction) -> String {
         switch action {
         case .delete(let ref): "Delete \(ref.kindName) “\(ref.name)”?"
         case .purge(let ref, _): "Purge \(ref.kindName) “\(ref.name)”?"
+        case .deleteSubscription(let sub): "Delete subscription “\(sub.name)”?"
+        case .purgeSubscription(let sub, _): "Purge subscription “\(sub.name)”?"
         }
     }
 
     private func confirmationButton(_ action: PendingAction) -> String {
         switch action {
-        case .delete: "Delete"
-        case .purge: "Purge"
+        case .delete, .deleteSubscription: "Delete"
+        case .purge, .purgeSubscription: "Purge"
         }
     }
 
@@ -264,6 +297,14 @@ struct ContentView: View {
             return ref.kind == .topic
                 ? "This deletes the topic, all its subscriptions and every message in them. It can't be undone."
                 : "This deletes the queue and every message in it, including its dead-letters. It can't be undone."
+        case .deleteSubscription:
+            return "This deletes the subscription, its rules and every message in it, including its dead-letters. It can't be undone."
+        case .purgeSubscription(_, let scope):
+            switch scope {
+            case .active: return "Permanently deletes the active messages in this subscription. Dead-letters are kept."
+            case .deadLetter: return "Permanently deletes the dead-lettered messages in this subscription."
+            case .all: return "Permanently deletes all active and dead-lettered messages in this subscription."
+            }
         case .purge(let ref, let scope):
             let where_ = ref.kind == .topic ? "every subscription of this topic" : "this queue"
             switch scope {

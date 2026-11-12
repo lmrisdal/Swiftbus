@@ -196,6 +196,22 @@ func topicEntry(_ name: String) -> String {
         #expect(body.contains("<SubscriptionDescription"))
     }
 
+    @Test func subscriptionDeleteAndDisableUseTheSubscriptionPath() async throws {
+        let log = RequestLog()
+        let transport = FakeTransport { req in
+            log.add(req)
+            if req.httpMethod == "GET" { return (200, "<entry><content><SubscriptionDescription xmlns=\"urn:x\"><Status>Active</Status></SubscriptionDescription></content></entry>") }
+            return (200, "")
+        }
+        let client = ManagementClient(connection: cs, transport: transport)
+        try await client.deleteSubscription(topic: "orders", name: "billing")
+        try await client.setSubscriptionStatus(topic: "orders", name: "billing", to: .disabled)
+        #expect(log.requests.map { "\($0.httpMethod!) \($0.url!.path)" } == [
+            "DELETE /orders/Subscriptions/billing", "GET /orders/Subscriptions/billing", "PUT /orders/Subscriptions/billing",
+        ])
+        #expect(String(decoding: log.requests[2].httpBody ?? Data(), as: UTF8.self).contains("<Status>Disabled</Status>"))
+    }
+
     @Test func conflictShowsServiceBusDetail() async {
         let xml = "<Error><Code>409</Code><Detail>The messaging entity 'orders:Topic:x' already exists.</Detail></Error>"
         let client = ManagementClient(connection: cs, transport: FakeTransport { _ in (409, xml) })

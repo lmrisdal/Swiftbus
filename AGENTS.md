@@ -41,6 +41,7 @@ the `MessagingClient` protocol, so the helper could later be replaced by a pure-
 │   ├── ConnectionsSettings.swift  ← Settings › Connections: add, edit, remove saved connections
 │   ├── DeadLetterModel.swift      ← view model for one entity's message list, resend/delete runs
 │   ├── EntitySheets.swift         ← "Create subscription" and "Send messages" sheets
+│   ├── JSONEditor.swift           ← NSTextView-backed body editor with JSON/XML syntax colouring
 │   ├── MessagesView.swift         ← message table, detail pane, action progress UI
 │   ├── ActivityLog.swift          ← in-memory log of actions/errors
 │   ├── ActivityLogView.swift      ← activity log window (⌥⌘L)
@@ -59,6 +60,8 @@ the `MessagingClient` protocol, so the helper could later be replaced by a pure-
 │   │   ├── HelperMessagingClient.swift← actor that runs swiftbus-helper and speaks JSON lines
 │   │   ├── DeadLetterAnalysis.swift   ← groups dead-letters by normalized reason + description signatures
 │   │   ├── DeadLetterActions.swift    ← batched resend/delete with per-batch progress
+│   │   ├── JSONFormatter.swift        ← order-preserving JSON pretty-print / minify / validate
+│   │   ├── EditorFormat.swift          ← picks JSON/XML/text from the content type; validate, pretty-print, minify
 │   │   ├── PurgeActions.swift         ← purge a queue, or every subscription of a topic
 │   │   ├── ServiceBusError.swift      ← user-readable error cases
 │   │   └── ServiceBusKit.swift        ← version constant

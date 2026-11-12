@@ -60,10 +60,10 @@ struct MessagesView: View {
                 Button("Resend", systemImage: "arrow.uturn.forward") { confirming = .resend }
                     .keyboardShortcut("r", modifiers: [.command, .option])
                     .help("Resend the selected messages and remove them from the dead-letter queue")
-                    .disabled(!canAct)
+                    .disabled(!canAct || model.queue != .deadLetter)
                 Button("Delete", systemImage: "trash") { confirming = .delete }
                     .keyboardShortcut(.delete, modifiers: .command)
-                    .help("Delete the selected messages without resending")
+                    .help(model.queue == .active ? "Permanently delete the selected active messages" : "Delete the selected messages without resending")
                     .disabled(!canAct)
             }
             ToolbarItem {
@@ -94,7 +94,9 @@ struct MessagesView: View {
         }
     }
 
-    private var canAct: Bool { model.queue == .deadLetter && !model.selectedMessages.isEmpty && !model.isRunning }
+    private var canAct: Bool {
+        (model.queue == .deadLetter || model.queue == .active) && !model.selectedMessages.isEmpty && !model.isRunning
+    }
 
     private var confirmTitle: String {
         let n = model.selectedMessages.count
@@ -105,6 +107,9 @@ struct MessagesView: View {
     private var confirmMessage: String {
         let topic = model.entity.path
         if confirming == .delete {
+            if model.queue == .active {
+                return "The messages are permanently removed from \(model.entity.name) without ever being processed. This cannot be undone.\n\nThey are received under a lock, so a consumer running at the same time may get them first, and any other message passed over to reach them counts one extra delivery attempt."
+            }
             return "The messages are permanently removed from the dead-letter queue of \(model.entity.name) without being resent. This cannot be undone."
         }
         if model.entity.isQueue {
@@ -428,7 +433,7 @@ struct RunProgressSheet: View {
 
     private func summary(_ run: ActionRun) -> String {
         var text = "\(run.succeeded) of \(run.messages.count) done"
-        if run.failed > 0 { text += ", \(run.failed) failed — failed messages stay in the dead-letter queue" }
+        if run.failed > 0 { text += ", \(run.failed) failed — failed messages stay in the queue" }
         return text
     }
 

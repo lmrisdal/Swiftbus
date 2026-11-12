@@ -13,8 +13,7 @@ struct HelperRequest: Encodable {
     var contentType: String?
     var subject: String?
     var messageId: String?
-    var applicationProperties: [String: String]?
-    var count: Int?
+    var properties: [MessageProperty]?
     var deadLetter: Bool?
 }
 
@@ -91,15 +90,15 @@ public actor HelperMessagingClient: MessagingClient {
                                      sequenceNumbers: sequenceNumbers)).results ?? []
     }
 
-    public func delete(topic: String, subscription: String?, sequenceNumbers: [Int64]) async throws -> [MessageResult] {
+    public func delete(topic: String, subscription: String?, deadLetter: Bool, sequenceNumbers: [Int64]) async throws -> [MessageResult] {
         try await send(HelperRequest(op: "delete", topic: topic, subscription: subscription,
-                                     sequenceNumbers: sequenceNumbers)).results ?? []
+                                     sequenceNumbers: sequenceNumbers, deadLetter: deadLetter)).results ?? []
     }
 
-    public func send(topic: String, message: OutgoingMessage, count: Int) async throws -> Int {
-        try await send(HelperRequest(op: "send", topic: topic, body: message.body, contentType: message.contentType,
-                                     subject: message.subject, messageId: message.messageId,
-                                     applicationProperties: message.applicationProperties, count: count)).count ?? 0
+    public func send(topic: String, message: OutgoingMessage) async throws {
+        let properties = message.properties.filter { !$0.isBlank }
+        _ = try await send(HelperRequest(op: "send", topic: topic, body: message.body, contentType: message.contentType,
+                                         subject: message.subject, messageId: message.messageId, properties: properties))
     }
 
     public func purge(topic: String, subscription: String?, deadLetter: Bool) async throws -> Int {

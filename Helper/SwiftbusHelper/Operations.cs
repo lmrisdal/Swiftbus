@@ -67,16 +67,20 @@ public sealed class Operations : IAsyncDisposable
         });
     }
 
+    /// Deletes the requested messages from the dead-letter queue, or from the active queue when
+    /// `DeadLetter` is false. Active messages we skip over are abandoned, which counts as a delivery attempt.
     public Task<List<ItemResult>> DeleteAsync(Request r) =>
-        ProcessAsync(r, (receiver, message) => receiver.CompleteMessageAsync(message));
+        ProcessAsync(r, (receiver, message) => receiver.CompleteMessageAsync(message),
+                     r.DeadLetter == false ? SubQueue.None : SubQueue.DeadLetter);
 
-    /// Receives dead-letters in peek-lock mode until every requested sequence number has been handled
+    /// Receives messages in peek-lock mode until every requested sequence number has been handled
     /// or the queue yields nothing more. Messages we don't want are abandoned (lock released).
-    private async Task<List<ItemResult>> ProcessAsync(Request r, Func<ServiceBusReceiver, ServiceBusReceivedMessage, Task> action)
+    private async Task<List<ItemResult>> ProcessAsync(Request r, Func<ServiceBusReceiver, ServiceBusReceivedMessage, Task> action,
+                                                      SubQueue subQueue = SubQueue.DeadLetter)
     {
         var wanted = new HashSet<long>(r.SequenceNumbers ?? throw new ArgumentException("sequenceNumbers is required"));
         var results = new List<ItemResult>();
-        await using var receiver = DeadLetterReceiver(r, ServiceBusReceiveMode.PeekLock);
+        await using var receiver = DeadLetterReceiver(r, ServiceBusReceiveMode.PeekLock, subQueue);
         var emptyRounds = 0;
         while (wanted.Count > 0 && emptyRounds < 2)
         {
@@ -104,45 +108,59 @@ public sealed class Operations : IAsyncDisposable
         }
         results.AddRange(wanted.Select(s => new ItemResult
         {
-            SequenceNumber = s, Ok = false, Error = "Message not found in the dead-letter queue (already handled?)."
+            SequenceNumber = s, Ok = false, Error = subQueue == SubQueue.None
+                ? "Message not found in the active queue (already received?)."
+                : "Message not found in the dead-letter queue (already handled?)."
         }));
         return results;
     }
 
-    /// Sends `Count` copies of a text message to a queue or topic, in as few batches as fit.
+    /// Sends one text message to a queue or topic.
     public async Task<int> SendAsync(Request r)
     {
-        var count = Math.Clamp(r.Count ?? 1, 1, 1000);
         await using var sender = Client.CreateSender(Require(r.Topic, "topic"));
-        ServiceBusMessage Build()
+        var m = new ServiceBusMessage(r.Body ?? "")
         {
-            var m = new ServiceBusMessage(r.Body ?? "")
+            ContentType = string.IsNullOrWhiteSpace(r.ContentType) ? null : r.ContentType,
+            Subject = string.IsNullOrWhiteSpace(r.Subject) ? null : r.Subject,
+            MessageId = string.IsNullOrWhiteSpace(r.MessageId) ? Guid.NewGuid().ToString() : r.MessageId
+        };
+        foreach (var p in r.Properties ?? new()) m.ApplicationProperties[p.Name] = ParseProperty(p);
+        await sender.SendMessageAsync(m);
+        return 1;
+    }
+
+    /// Converts a property's text to the .NET value type it names, so receivers see a typed value.
+    static object ParseProperty(PropertyDto p)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var v = p.Value;
+        try
+        {
+            return p.Type switch
             {
-                ContentType = string.IsNullOrWhiteSpace(r.ContentType) ? null : r.ContentType,
-                Subject = string.IsNullOrWhiteSpace(r.Subject) ? null : r.Subject,
-                MessageId = string.IsNullOrWhiteSpace(r.MessageId) ? Guid.NewGuid().ToString() : r.MessageId
+                "Boolean" => bool.Parse(v.Trim()),
+                "Byte" => byte.Parse(v.Trim(), inv),
+                "SByte" => sbyte.Parse(v.Trim(), inv),
+                "Int16" => short.Parse(v.Trim(), inv),
+                "UInt16" => ushort.Parse(v.Trim(), inv),
+                "Int32" => int.Parse(v.Trim(), inv),
+                "UInt32" => uint.Parse(v.Trim(), inv),
+                "Int64" => long.Parse(v.Trim(), inv),
+                "UInt64" => ulong.Parse(v.Trim(), inv),
+                "Single" => float.Parse(v.Trim(), inv),
+                "Double" => double.Parse(v.Trim(), inv),
+                "Decimal" => decimal.Parse(v.Trim(), inv),
+                "Guid" => Guid.Parse(v.Trim()),
+                "DateTime" => DateTime.Parse(v.Trim(), inv, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal),
+                "Char" => v.Length == 1 ? v[0] : throw new FormatException("expected a single character"),
+                _ => v
             };
-            foreach (var (key, value) in r.ApplicationProperties ?? new()) m.ApplicationProperties[key] = value;
-            return m;
         }
-        var sent = 0;
-        var batch = await sender.CreateMessageBatchAsync();
-        for (var i = 0; i < count; i++)
+        catch (Exception ex) when (ex is FormatException or OverflowException)
         {
-            var message = Build();
-            if (!batch.TryAddMessage(message))
-            {
-                if (batch.Count == 0) throw new ArgumentException("The message is too large to send.");
-                await sender.SendMessagesAsync(batch);
-                sent += batch.Count;
-                batch.Dispose();
-                batch = await sender.CreateMessageBatchAsync();
-                if (!batch.TryAddMessage(message)) throw new ArgumentException("The message is too large to send.");
-            }
+            throw new ArgumentException($"Property '{p.Name}': '{v}' is not a valid {p.Type}.");
         }
-        if (batch.Count > 0) { await sender.SendMessagesAsync(batch); sent += batch.Count; }
-        batch.Dispose();
-        return sent;
     }
 
     /// Deletes every message in the queue/subscription (or its dead-letter queue) by receiving in

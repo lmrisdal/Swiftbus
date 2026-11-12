@@ -147,6 +147,19 @@ public struct ManagementClient: Sendable {
         try await updateStatus(path: Self.encode(name), to: status)
     }
 
+    /// Deleting a subscription also deletes its messages, dead-letters and rules.
+    public func deleteSubscription(topic: String, name: String) async throws {
+        _ = try await request(method: "DELETE", path: Self.subscriptionPath(topic: topic, name: name))
+    }
+
+    public func setSubscriptionStatus(topic: String, name: String, to status: EntityStatus) async throws {
+        try await updateStatus(path: Self.subscriptionPath(topic: topic, name: name), to: status)
+    }
+
+    private static func subscriptionPath(topic: String, name: String) -> String {
+        "\(encode(topic))/Subscriptions/\(pathEncode(name))"
+    }
+
     /// Creates a subscription with Service Bus's default settings (and its default match-all rule).
     public func createSubscription(topic: String, name: String) async throws {
         let body = """

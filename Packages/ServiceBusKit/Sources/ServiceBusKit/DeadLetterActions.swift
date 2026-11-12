@@ -8,6 +8,7 @@ public enum DeadLetterAction: Sendable, Equatable {
 public enum DeadLetterActions {
     /// Runs `action` over `sequenceNumbers` in batches so callers can show progress.
     /// A batch that throws (e.g. the helper died) marks only its own messages as failed; later batches still run.
+    /// `deadLetter: false` deletes from the active queue (only meaningful for `.delete`).
     /// `onBatch` receives each batch's results as soon as they are known.
     public static func run(
         _ action: DeadLetterAction,
@@ -15,6 +16,7 @@ public enum DeadLetterActions {
         topic: String,
         subscription: String?,
         sequenceNumbers: [Int64],
+        deadLetter: Bool = true,
         batchSize: Int = 25,
         onBatch: @Sendable ([MessageResult]) async -> Void = { _ in }
     ) async -> [MessageResult] {
@@ -31,7 +33,7 @@ public enum DeadLetterActions {
             do {
                 switch action {
                 case .resend: results = try await client.resend(topic: topic, subscription: subscription, sequenceNumbers: batch)
-                case .delete: results = try await client.delete(topic: topic, subscription: subscription, sequenceNumbers: batch)
+                case .delete: results = try await client.delete(topic: topic, subscription: subscription, deadLetter: deadLetter, sequenceNumbers: batch)
                 }
             } catch {
                 results = batch.map { MessageResult(sequenceNumber: $0, ok: false, error: error.localizedDescription) }

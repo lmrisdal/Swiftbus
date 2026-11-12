@@ -94,7 +94,7 @@ final class DeadLetterModel {
     private(set) var hasMore = false
     var errorMessage: String?
 
-    /// Which queue of the subscription is shown. Resend and delete only apply to the dead-letter queue.
+    /// Which queue of the subscription is shown. Resend only applies to the dead-letter queue; delete also to active messages.
     var queue: QueueKind = .active
     var groupByReason = false
     var selection: Set<String> = []
@@ -126,14 +126,18 @@ final class DeadLetterModel {
     }
 
     private func begin(_ action: DeadLetterAction, targets: [DeadLetterMessage]) {
-        guard queue == .deadLetter, !targets.isEmpty, !isRunning else { return }
+        guard !targets.isEmpty, !isRunning else { return }
+        // Resend only makes sense for dead-letters; transfer dead-letters are read-only.
+        let deadLetter = queue == .deadLetter
+        guard deadLetter || (queue == .active && action == .delete) else { return }
         run = ActionRun(action: action, messages: targets)
         let verb = action == .resend ? "Resending" : "Deleting"
-        log?.add("\(verb) \(targets.count) message(s) from \(entity.fullName).")
+        log?.add("\(verb) \(targets.count) \(queue == .active ? "active " : "")message(s) from \(entity.fullName).")
         let topic = entity.path, name = entity.subscription, client = client
         runTask = Task { [self] in
             _ = await DeadLetterActions.run(action, client: client, topic: topic, subscription: name,
-                                            sequenceNumbers: targets.map(\.sequenceNumber)) { batch in
+                                            sequenceNumbers: targets.map(\.sequenceNumber),
+                                            deadLetter: deadLetter) { batch in
                 await self.record(batch)
             }
             await self.finishRun()

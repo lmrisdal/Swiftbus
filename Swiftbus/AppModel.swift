@@ -313,17 +313,60 @@ final class AppModel {
         await refresh()
     }
 
+    // MARK: Subscription actions
+
+    /// `sb://namespace/topic/subscriptions/name`, the form Service Bus Explorer copies.
+    func url(for sub: Subscription, deadLetter: Bool = false) -> String? {
+        activeHost.map { "sb://\($0)/\(sub.topic)/subscriptions/\(sub.name)" + (deadLetter ? "/$DeadLetterQueue" : "") }
+    }
+
+    func refresh(_ sub: Subscription) async {
+        guard let client, !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            replace(subscription: try await client.subscription(topic: sub.topic, name: sub.name))
+            messageReloadToken += 1
+            lastRefreshed = Date()
+            log.add("Refreshed subscription \(sub.id).")
+        } catch { fail(error, doing: "Refreshing subscription \(sub.id)") }
+    }
+
+    func setDisabled(_ disabled: Bool, _ sub: Subscription) async {
+        await perform("\(disabled ? "Disabling" : "Enabling") subscription \(sub.id)") {
+            try await $0.setSubscriptionStatus(topic: sub.topic, name: sub.name, to: disabled ? .disabled : .active)
+        }
+        await refresh(sub)
+    }
+
+    func delete(_ sub: Subscription) async {
+        let ok = await perform("Deleting subscription \(sub.id)") { try await $0.deleteSubscription(topic: sub.topic, name: sub.name) }
+        guard ok else { return }
+        if selection == .subscription(topic: sub.topic, name: sub.name) { selection = .topic(sub.topic) }
+        await refresh(EntityRef(kind: .topic, name: sub.topic))
+    }
+
+    func purge(_ sub: Subscription, scope: PurgeScope) async {
+        guard let messaging else { return }
+        let what = switch scope { case .active: "messages"; case .deadLetter: "dead-letters"; case .all: "all messages" }
+        let report = await PurgeActions.run(client: messaging, topic: sub.topic, subscriptions: [sub.name], scope: scope)
+        log.add("Purged \(report.purged) \(what) from subscription \(sub.id).", level: report.failures.isEmpty ? .success : .error)
+        for failure in report.failures { log.add("Purge failed: \(failure)", level: .error) }
+        if !report.failures.isEmpty { errorMessage = "Some purges failed:\n" + report.failures.joined(separator: "\n") }
+        await refresh(sub)
+    }
+
     func createSubscription(topic: String, name: String) async -> Bool {
         let ok = await perform("Creating subscription \(topic)/\(name)") { try await $0.createSubscription(topic: topic, name: name) }
         if ok { await refresh(EntityRef(kind: .topic, name: topic)) }
         return ok
     }
 
-    func send(_ message: OutgoingMessage, count: Int, to ref: EntityRef) async -> Bool {
+    func send(_ message: OutgoingMessage, to ref: EntityRef) async -> Bool {
         guard let messaging else { return false }
         do {
-            let sent = try await messaging.send(topic: ref.name, message: message, count: count)
-            log.add("Sent \(sent) message\(sent == 1 ? "" : "s") to \(ref.kindName) \(ref.name).", level: .success)
+            try await messaging.send(topic: ref.name, message: message)
+            log.add("Sent a message to \(ref.kindName) \(ref.name).", level: .success)
             await refresh(ref)
             return true
         } catch { fail(error, doing: "Sending to \(ref.name)"); return false }

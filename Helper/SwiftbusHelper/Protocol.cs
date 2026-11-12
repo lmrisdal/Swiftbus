@@ -19,10 +19,9 @@ public sealed class Request
     public string? ContentType { get; set; }
     public string? Subject { get; set; }
     public string? MessageId { get; set; }
-    public Dictionary<string, string>? ApplicationProperties { get; set; }
-    /// send: how many copies to send.
-    public int? Count { get; set; }
-    /// purge: true to purge the dead-letter queue instead of the active messages.
+    /// send: typed application properties.
+    public List<PropertyDto>? Properties { get; set; }
+    /// purge, delete: true (the default for delete) targets the dead-letter queue, false the active messages.
     public bool? DeadLetter { get; set; }
 }
 
@@ -38,6 +37,14 @@ public sealed class Response
     public List<ItemResult>? Results { get; set; }
     /// send: messages sent. purge: messages deleted.
     public int? Count { get; set; }
+}
+
+/// A typed application property to send. Type is a .NET type name such as Int32 or Guid; Value is its text form.
+public sealed class PropertyDto
+{
+    public string Name { get; set; } = "";
+    public string Type { get; set; } = "String";
+    public string Value { get; set; } = "";
 }
 
 public sealed class ItemResult
