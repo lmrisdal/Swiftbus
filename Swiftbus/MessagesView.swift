@@ -298,14 +298,9 @@ struct MessageInspector: View {
                     CopyButton(title: "Copy body", text: body.text)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 8)
-                ScrollView([.vertical, .horizontal]) {
-                    Text(SyntaxHighlighter.attributed(body.text, format: editorFormat(for: body.format)))
-                        .font(.system(size: 12, design: .monospaced))
-                        .lineSpacing(2)
-                        .textSelection(.enabled)
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                // An NSTextView, not a SwiftUI Text: very long unbroken lines (e.g. escaped JSON inside a
+                // string) make SwiftUI's Text render as smeared streaks.
+                JSONEditor(text: .constant(body.text), format: editorFormat(for: body.format), isEditable: false)
                 .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.background))
                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
                 .padding([.horizontal, .bottom], 10)

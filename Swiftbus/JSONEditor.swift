@@ -9,6 +9,8 @@ struct JSONEditor: NSViewRepresentable {
     var format: EditorFormat
     /// Take keyboard focus as soon as the editor is on screen (e.g. when a sheet opens).
     var autoFocus = false
+    /// Read-only viewers (the message inspector) still allow selecting and copying.
+    var isEditable = true
 
     /// The view isn't in a window yet when it is made, so retry briefly until it is.
     private static func focus(_ view: NSTextView, attempts: Int = 10) {
@@ -28,6 +30,8 @@ struct JSONEditor: NSViewRepresentable {
         let view = scroll.documentView as! NSTextView
         view.delegate = context.coordinator
         view.isRichText = false
+        view.isEditable = isEditable
+        view.isSelectable = true
         view.allowsUndo = true
         view.isAutomaticQuoteSubstitutionEnabled = false
         view.isAutomaticDashSubstitutionEnabled = false
