@@ -1,5 +1,7 @@
 # Reusable build: runs the package tests, archives a universal Release build of Swiftbus (with the
-# .NET helper) and uploads it as a drag-to-install Swiftbus-<version>.dmg workflow artifact.
+# .NET helper) and uploads it as a drag-to-install Swiftbus.dmg in a
+# Swiftbus-<version> workflow artifact. The file name carries no version so
+# releases/latest/download/Swiftbus.dmg always points at the newest release.
 #
 # Signing is optional. Without the secrets below the app is ad-hoc signed, which runs locally but
 # Gatekeeper will quarantine it on other Macs. With them it is signed with Developer ID and notarized.
@@ -173,7 +175,6 @@ jobs:
 
       - name: Create disk image
         env:
-          ARTIFACT: ${{ steps.version.outputs.artifact }}
           SIGNED: ${{ steps.signing.outputs.signed }}
           KEYCHAIN: ${{ steps.signing.outputs.keychain }}
         run: |
@@ -183,18 +184,17 @@ jobs:
           mkdir -p "$STAGING"
           ditto dist/Swiftbus.app "$STAGING/Swiftbus.app"
           ln -s /Applications "$STAGING/Applications"
-          hdiutil create -volname Swiftbus -srcfolder "$STAGING" -fs HFS+ -format UDZO -ov "dist/$ARTIFACT.dmg"
+          hdiutil create -volname Swiftbus -srcfolder "$STAGING" -fs HFS+ -format UDZO -ov "dist/Swiftbus.dmg"
           rm -rf "$STAGING" dist/Swiftbus.app
           if [ "$SIGNED" = "true" ]; then
-            codesign --sign "Developer ID Application" --timestamp --keychain "$KEYCHAIN" "dist/$ARTIFACT.dmg"
-            codesign --verify --verbose=2 "dist/$ARTIFACT.dmg"
+            codesign --sign "Developer ID Application" --timestamp --keychain "$KEYCHAIN" "dist/Swiftbus.dmg"
+            codesign --verify --verbose=2 "dist/Swiftbus.dmg"
           fi
 
       - name: Notarize
         id: notarize
         if: steps.signing.outputs.signed == 'true'
         env:
-          ARTIFACT: ${{ steps.version.outputs.artifact }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
@@ -208,17 +208,16 @@ jobs:
           printf '%s\n' "$APPLE_API_KEY" > "$KEY_FILE"
           trap 'rm -f "$KEY_FILE"' EXIT
           # Notarizing the disk image covers the app inside it; the ticket is stapled to the image.
-          xcrun notarytool submit "dist/$ARTIFACT.dmg" \
+          xcrun notarytool submit "dist/Swiftbus.dmg" \
             --key "$KEY_FILE" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER_ID" \
             --wait --timeout 30m
-          xcrun stapler staple "dist/$ARTIFACT.dmg"
-          spctl --assess --type open --context context:primary-signature --verbose=2 "dist/$ARTIFACT.dmg"
+          xcrun stapler staple "dist/Swiftbus.dmg"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "dist/Swiftbus.dmg"
           echo "notarized=true" >> "$GITHUB_OUTPUT"
 
       - name: Sign for Sparkle updates
         id: sparkle
         env:
-          ARTIFACT: ${{ steps.version.outputs.artifact }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
@@ -228,16 +227,14 @@ jobs:
           # After stapling, which changes the file. sign_update ships in the Sparkle package artifact.
           SIGN_UPDATE=$(find "$RUNNER_TEMP/SourcePackages/artifacts" -path '*/Sparkle/bin/sign_update' -type f | head -1)
           [ -x "$SIGN_UPDATE" ] || { echo "::error::sign_update not found in the resolved Sparkle package"; exit 1; }
-          signature=$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SIGN_UPDATE" --ed-key-file - "dist/$ARTIFACT.dmg")
+          signature=$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SIGN_UPDATE" --ed-key-file - "dist/Swiftbus.dmg")
           echo "$signature"
           echo "signature=$signature" >> "$GITHUB_OUTPUT"
 
       - name: Checksum
-        env:
-          ARTIFACT: ${{ steps.version.outputs.artifact }}
         run: |
           cd dist
-          shasum -a 256 "$ARTIFACT.dmg" > "$ARTIFACT.dmg.sha256"
+          shasum -a 256 Swiftbus.dmg > Swiftbus.dmg.sha256
           ls -l
 
       - uses: actions/upload-artifact@v4

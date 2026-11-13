@@ -6,69 +6,57 @@
 
 **A fast, native Azure Service Bus manager for macOS.**
 
-Browse queues, topics and subscriptions, dig into dead-letters, fix broken messages and send them
-back on their way, without opening the Azure portal.
+Browse your queues, topics and subscriptions, peek at messages, send new ones and keep your
+namespace tidy, all from a proper Mac app instead of the Azure portal.
 
 [![Latest release](https://img.shields.io/github/v/release/lmrisdal/Swiftbus?include_prereleases&label=download)](https://github.com/lmrisdal/Swiftbus/releases/latest)
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)
 ![Swift 6](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)
 [![CI](https://github.com/lmrisdal/Swiftbus/actions/workflows/ci.yml/badge.svg)](https://github.com/lmrisdal/Swiftbus/actions/workflows/ci.yml)
 
-[Download](https://github.com/lmrisdal/Swiftbus/releases/latest) ·
+[Download](https://github.com/lmrisdal/Swiftbus/releases/latest/download/Swiftbus.dmg) ·
 [Features](#features) ·
 [Getting started](#getting-started) ·
 [Building from source](#building-from-source)
 
 </div>
 
-<!-- Add a screenshot here, e.g.:
-<p align="center"><img src="docs/screenshot.png" width="900" alt="Swiftbus showing a dead-letter queue grouped by reason"></p>
--->
+> **Early beta software:** Swiftbus is still under active development; expect bugs and changes.
 
 ## Features
 
-### 🔭 See everything at a glance
+### 🔭 Your namespace at a glance
 
-- Every queue, topic and subscription in your namespace with **active and dead-letter counts**.
-- Filter down to only the entities that have dead-letters, or search with **⌘F**.
-- Pick the layout you like: a single sidebar tree, or a sidebar, a subscription table and the messages.
+- Every queue, topic and subscription with its **message counts**, in a sidebar tree or a
+  sidebar-plus-table layout, whichever you prefer.
+- Search with **⌘F**, refresh with **⌘R**, and switch between connections in a click.
 
 ### 📨 Browse messages
 
-- Switch between **active**, **dead-letter** and **transfer dead-letter** messages (**⌘1**, **⌘2**, **⌘3**).
-- Inspect the reason, error description, enqueued time, properties and body, with
-  **JSON and XML syntax highlighting**.
-- **Group dead-letters by reason** (**⌥⌘G**) to see at once which failure is behind most of them.
+- Peek at **active**, **dead-letter** and **transfer dead-letter** messages (**⌘1**, **⌘2**, **⌘3**).
+- Inspect body, system properties and typed application properties, with **JSON and XML syntax
+  highlighting**.
+- **Save messages as JSON** to share or look at later.
 
-### 🛠 Fix and replay
+### ✉️ Send and resubmit
 
-- **Resend** selected dead-letters to their topic and remove them from the dead-letter queue (**⌥⌘R**).
-  The original is only removed after the copy has been sent.
-- **Repair and resubmit**: edit the body, system properties and typed application properties of a
-  message, then send the fixed copy, optionally removing the original.
-- **Delete** messages you don't need (**⌘⌫**), and retry any that failed to resend with one click.
-- **Save messages as JSON** for a bug report or a closer look.
+- **Send messages** to any queue or topic: body, content type, subject, IDs and typed application
+  properties, with JSON formatting built in. Send one or many at once.
+- **Edit and resubmit** an existing message, or resend selected messages in bulk with progress you can
+  follow.
+- Dead-lettered messages can be grouped by reason (**⌥⌘G**) when you need to work through them.
 
-### ⚙️ Manage your namespace
+### ⚙️ Manage entities
 
 Right-click a queue or topic to:
 
 - enable or disable it, refresh it or copy its URL,
-- create a subscription or send test messages,
-- purge messages or dead-letters, or delete the entity.
-
-Anything destructive asks first.
-
-### 🔐 Safe by design
-
-- Connection strings live in your **macOS Keychain**, never in plain text.
-- Runs fully **sandboxed**; credentials are passed to the messaging helper over a pipe, never on the command line.
-- An **activity log** (**⇧⌘B**) records every action and error, so you always know what happened.
-- Light, dark or system appearance.
+- create a subscription,
+- purge its messages, or delete it.
 
 ## Installation
 
-1. Download the latest `.dmg` from [Releases](https://github.com/lmrisdal/Swiftbus/releases/latest).
+1. [Download **Swiftbus.dmg**](https://github.com/lmrisdal/Swiftbus/releases/latest/download/Swiftbus.dmg) (latest release).
 2. Open it and drag **Swiftbus** to **Applications**.
 
 **Requirements**

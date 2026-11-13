@@ -73,7 +73,6 @@ jobs:
           TAG: ${{ github.ref_name }}
           VERSION: ${{ needs.build.outputs.version }}
           BUILD: ${{ needs.build.outputs.build }}
-          ARTIFACT: ${{ needs.build.outputs.artifact }}
           SIGNATURE: ${{ needs.build.outputs.sparkle-signature }}
         run: |
           set -euo pipefail
@@ -94,7 +93,7 @@ jobs:
                 <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
                 <sparkle:fullReleaseNotesLink>https://github.com/$GH_REPO/releases/tag/$TAG</sparkle:fullReleaseNotesLink>
                 <description><![CDATA[$notes]]></description>
-                <enclosure url="https://github.com/$GH_REPO/releases/download/$TAG/$ARTIFACT.dmg" type="application/octet-stream" $SIGNATURE />
+                <enclosure url="https://github.com/$GH_REPO/releases/download/$TAG/Swiftbus.dmg" type="application/octet-stream" $SIGNATURE />
               </item>
             </channel>
           </rss>
