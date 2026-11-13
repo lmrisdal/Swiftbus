@@ -3,10 +3,21 @@
 # The draft is a preview only: publish a version by pushing a tag (see release.yml).
 name: CI
 
+#
+# Only changes that can affect the build trigger it; docs-only edits (README, AGENTS.md, …) don't.
+# Use "Run workflow" (workflow_dispatch) to build anyway.
 on:
   push:
     branches: [main]
+    paths: &source-paths
+      - "Swiftbus/**"
+      - "Swiftbus.xcodeproj/**"
+      - "Packages/**"
+      - "Helper/**"
+      - "scripts/**"
+      - ".github/workflows/**"
   pull_request:
+    paths: *source-paths
   workflow_dispatch:
 
 concurrency:

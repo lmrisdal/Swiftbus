@@ -25,13 +25,6 @@ back on their way, without opening the Azure portal.
 <p align="center"><img src="docs/screenshot.png" width="900" alt="Swiftbus showing a dead-letter queue grouped by reason"></p>
 -->
 
-## Why Swiftbus?
-
-Dead-letter queues pile up, and the Azure portal makes cleaning them up slow: one message at a time,
-lots of clicking, little context. Swiftbus is a real Mac app built for that job. It shows every
-entity with its counts at a glance, groups dead-letters by _why_ they failed, and lets you resend,
-repair or delete hundreds of messages in one go, with progress you can follow.
-
 ## Features
 
 ### 🔭 See everything at a glance
