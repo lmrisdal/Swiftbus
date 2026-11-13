@@ -62,3 +62,41 @@ jobs:
           args=(--verify-tag --title "Swiftbus $VERSION" --generate-notes --notes-file notes.md)
           case "$VERSION" in *-*) args+=(--prerelease) ;; esac
           gh release create "$TAG" dist/* "${args[@]}"
+
+      - name: Publish the update feed
+        # The app reads releases/latest/download/appcast.xml, so only full releases need a feed
+        # (GitHub's "latest" never points at a pre-release).
+        if: needs.build.outputs.sparkle-signature != '' && !contains(needs.build.outputs.version, '-')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.build.outputs.version }}
+          BUILD: ${{ needs.build.outputs.build }}
+          ARTIFACT: ${{ needs.build.outputs.artifact }}
+          SIGNATURE: ${{ needs.build.outputs.sparkle-signature }}
+        run: |
+          set -euo pipefail
+          # Release notes as HTML, rendered by GitHub, for Sparkle's update window.
+          gh release view "$TAG" --json body --jq .body > notes.md
+          notes=$(gh api markdown -f text="$(cat notes.md)" -f mode=gfm -f context="$GH_REPO" | sed 's/]]>/]]]]><![CDATA[>/g')
+          cat > appcast.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+            <channel>
+              <title>Swiftbus</title>
+              <link>https://github.com/$GH_REPO/releases</link>
+              <item>
+                <title>Swiftbus $VERSION</title>
+                <pubDate>$(LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S +0000')</pubDate>
+                <sparkle:version>$BUILD</sparkle:version>
+                <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+                <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+                <sparkle:fullReleaseNotesLink>https://github.com/$GH_REPO/releases/tag/$TAG</sparkle:fullReleaseNotesLink>
+                <description><![CDATA[$notes]]></description>
+                <enclosure url="https://github.com/$GH_REPO/releases/download/$TAG/$ARTIFACT.dmg" type="application/octet-stream" $SIGNATURE />
+              </item>
+            </channel>
+          </rss>
+          EOF
+          gh release upload "$TAG" appcast.xml --clobber

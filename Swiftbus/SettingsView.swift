@@ -126,7 +126,7 @@ struct SettingsView: View {
 
 // MARK: - Panes
 
-/// Appearance and layout, each picked from preview cards.
+/// Appearance and layout, each picked from preview cards, and app updates.
 private struct GeneralSettingsPane: View {
     @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system
     @AppStorage(LayoutSetting.key) private var layout = LayoutSetting.tree
@@ -166,6 +166,7 @@ private struct GeneralSettingsPane: View {
                 Text("Applies to the main window right away.")
                     .font(.callout).foregroundStyle(.secondary)
             }
+            UpdateSettingsSection()
         }
         .onChange(of: appearance) { _, new in new.apply() }
     }

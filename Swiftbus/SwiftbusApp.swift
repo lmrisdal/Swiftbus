@@ -4,6 +4,7 @@ import SwiftUI
 @main
 struct SwiftbusApp: App {
     @State private var model = AppModel()
+    @State private var updater = AppUpdater()
 
     init() {
         NSTableRowView.alwaysEmphasizeSelection()
@@ -23,11 +24,17 @@ struct SwiftbusApp: App {
                 .environment(model)
                 .frame(minWidth: 1100, minHeight: 560)
         }
-        .commands { AppCommands() }
+        .commands {
+            AppCommands()
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesButton(updater: updater)
+            }
+        }
 
         Settings {
             SettingsView()
                 .environment(model)
+                .environment(updater)
         }
     }
 }

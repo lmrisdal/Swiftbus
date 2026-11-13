@@ -10,6 +10,8 @@
 #   APPLE_API_KEY               contents of an App Store Connect API key (.p8)   (optional: skips notarization)
 #   APPLE_API_KEY_ID            that key's Key ID
 #   APPLE_API_ISSUER_ID         the Issuer ID shown above the keys list
+#   SPARKLE_PRIVATE_KEY         EdDSA key from Sparkle's `generate_keys -x` (optional: without it the
+#                               disk image is not signed for in-app updates and no appcast is published)
 name: Build
 
 on:
@@ -36,6 +38,12 @@ on:
       notarized:
         description: "'true' when notarized and stapled"
         value: ${{ jobs.build.outputs.notarized }}
+      build:
+        description: Build number (CFBundleVersion), the commit count of the built revision
+        value: ${{ jobs.build.outputs.build }}
+      sparkle-signature:
+        description: Sparkle enclosure attributes of the disk image (sparkle:edSignature="…" length="…"), empty when not signed for updates
+        value: ${{ jobs.build.outputs.sparkle-signature }}
 
 permissions:
   contents: read
@@ -49,11 +57,16 @@ jobs:
       artifact: ${{ steps.version.outputs.artifact }}
       signed: ${{ steps.signing.outputs.signed }}
       notarized: ${{ steps.notarize.outputs.notarized }}
+      build: ${{ steps.version.outputs.build }}
+      sparkle-signature: ${{ steps.sparkle.outputs.signature }}
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       DOTNET_NOLOGO: "1"
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Full history for the commit-count build number.
+          fetch-depth: 0
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -81,9 +94,12 @@ jobs:
           # CFBundleShortVersionString must be plain numbers, so drop any pre-release suffix there.
           echo "display=$display" >> "$GITHUB_OUTPUT"
           echo "marketing=${display%%-*}" >> "$GITHUB_OUTPUT"
-          echo "build=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          # Sparkle decides "newer" by CFBundleVersion, so it must grow across both CI and release
+          # builds. Run numbers are per workflow; the commit count of main is shared by both.
+          build=$(git rev-list --count HEAD)
+          echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "artifact=Swiftbus-$display" >> "$GITHUB_OUTPUT"
-          echo "Version $display (build $GITHUB_RUN_NUMBER)"
+          echo "Version $display (build $build)"
 
       - name: Import signing certificate
         id: signing
@@ -132,6 +148,7 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=macOS' \
             -archivePath "$RUNNER_TEMP/Swiftbus.xcarchive" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
             ONLY_ACTIVE_ARCH=NO \
             "MARKETING_VERSION=$MARKETING_VERSION" \
             "CURRENT_PROJECT_VERSION=$BUILD_NUMBER" \
@@ -184,6 +201,23 @@ jobs:
           xcrun stapler staple "dist/$ARTIFACT.dmg"
           spctl --assess --type open --context context:primary-signature --verbose=2 "dist/$ARTIFACT.dmg"
           echo "notarized=true" >> "$GITHUB_OUTPUT"
+
+      - name: Sign for Sparkle updates
+        id: sparkle
+        env:
+          ARTIFACT: ${{ steps.version.outputs.artifact }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
+            echo "No SPARKLE_PRIVATE_KEY configured; the disk image is not signed for in-app updates."
+            exit 0
+          fi
+          # After stapling, which changes the file. sign_update ships in the Sparkle package artifact.
+          SIGN_UPDATE=$(find "$RUNNER_TEMP/SourcePackages/artifacts" -path '*/Sparkle/bin/sign_update' -type f | head -1)
+          [ -x "$SIGN_UPDATE" ] || { echo "::error::sign_update not found in the resolved Sparkle package"; exit 1; }
+          signature=$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SIGN_UPDATE" --ed-key-file - "dist/$ARTIFACT.dmg")
+          echo "$signature"
+          echo "signature=$signature" >> "$GITHUB_OUTPUT"
 
       - name: Checksum
         env:

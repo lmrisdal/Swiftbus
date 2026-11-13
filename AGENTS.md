@@ -51,6 +51,9 @@ the `MessagingClient` protocol, so the helper could later be replaced by a pure-
 │   ├── ActivityLog.swift          ← in-memory log of actions/errors
 │   ├── ActivityLogView.swift      ← activity log window (⌥⌘L)
 │   ├── AppCommands.swift          ← menu commands / keyboard shortcuts
+│   ├── AppUpdater.swift           ← Sparkle wrapper: Check for Updates…, Settings › Updates
+│   ├── Info.plist                 ← Sparkle keys only (rest is generated); excluded from resources
+│   ├── Swiftbus.entitlements      ← Sparkle mach-lookup exceptions (sandbox etc. come from build settings)
 │   └── Assets.xcassets            ← app icon (generated) and accent color
 ├── Packages/ServiceBusKit/        ← local Swift package, linked into the app
 │   ├── Package.swift              ← swift-tools 6.0, macOS 14, no external dependencies
@@ -171,6 +174,13 @@ dotnet publish Helper/SwiftbusHelper/SwiftbusHelper.csproj -c Release -r osx-arm
 - `build-helper.sh` passes `OTHER_CODE_SIGN_FLAGS` to `codesign`; CI uses it for `--timestamp`, which
   notarization requires on the helper too.
 - Regenerate the icon with `swift scripts/make-icon.swift`.
+- **Updates (Sparkle):** the app's one external dependency, added as a Swift package to the app target
+  only (ServiceBusKit stays dependency-free). The feed is `releases/latest/download/appcast.xml`,
+  written by `release.yml` for non-pre-release tags. `build.yml` signs the stapled DMG with
+  `sign_update` using the `SPARKLE_PRIVATE_KEY` secret; the public half is the `SPARKLE_PUBLIC_ED_KEY`
+  build setting. `CFBundleVersion` is `git rev-list --count HEAD` (Sparkle compares it), so don't go back
+  to per-workflow run numbers. The `-spks`/`-spki` mach-lookup entitlements and
+  `SUEnableInstallerLauncherService` are required for a sandboxed app to install updates.
 - Running the app against a real namespace needs a connection string with Manage, Send and Listen
   rights. Never commit connection strings or keys; tests must not hit Azure.
 
@@ -191,7 +201,7 @@ dotnet publish Helper/SwiftbusHelper/SwiftbusHelper.csproj -c Release -r osx-arm
   automatically, no `project.pbxproj` edits needed. Avoid hand-editing `project.pbxproj` unless you
   must change build settings.
 - Style: 4-space indent, doc comments (`///`) on public API explaining *why*, short `// MARK:`
-  sections, no external Swift dependencies.
+  sections, no external Swift dependencies (Sparkle, for app updates, is the one exception).
 
 ### C# helper
 - Must stay **Native-AOT and trim safe**: no reflection-based JSON. Add every serialized type to

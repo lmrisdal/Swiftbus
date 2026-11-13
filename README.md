@@ -29,23 +29,26 @@ back on their way, without opening the Azure portal.
 
 Dead-letter queues pile up, and the Azure portal makes cleaning them up slow: one message at a time,
 lots of clicking, little context. Swiftbus is a real Mac app built for that job. It shows every
-entity with its counts at a glance, groups dead-letters by *why* they failed, and lets you resend,
+entity with its counts at a glance, groups dead-letters by _why_ they failed, and lets you resend,
 repair or delete hundreds of messages in one go, with progress you can follow.
 
 ## Features
 
 ### 🔭 See everything at a glance
+
 - Every queue, topic and subscription in your namespace with **active and dead-letter counts**.
 - Filter down to only the entities that have dead-letters, or search with **⌘F**.
 - Pick the layout you like: a single sidebar tree, or a sidebar, a subscription table and the messages.
 
 ### 📨 Browse messages
+
 - Switch between **active**, **dead-letter** and **transfer dead-letter** messages (**⌘1**, **⌘2**, **⌘3**).
 - Inspect the reason, error description, enqueued time, properties and body, with
   **JSON and XML syntax highlighting**.
 - **Group dead-letters by reason** (**⌥⌘G**) to see at once which failure is behind most of them.
 
 ### 🛠 Fix and replay
+
 - **Resend** selected dead-letters to their topic and remove them from the dead-letter queue (**⌥⌘R**).
   The original is only removed after the copy has been sent.
 - **Repair and resubmit**: edit the body, system properties and typed application properties of a
@@ -54,7 +57,9 @@ repair or delete hundreds of messages in one go, with progress you can follow.
 - **Save messages as JSON** for a bug report or a closer look.
 
 ### ⚙️ Manage your namespace
+
 Right-click a queue or topic to:
+
 - enable or disable it, refresh it or copy its URL,
 - create a subscription or send test messages,
 - purge messages or dead-letters, or delete the entity.
@@ -62,6 +67,7 @@ Right-click a queue or topic to:
 Anything destructive asks first.
 
 ### 🔐 Safe by design
+
 - Connection strings live in your **macOS Keychain**, never in plain text.
 - Runs fully **sandboxed**; credentials are passed to the messaging helper over a pipe, never on the command line.
 - An **activity log** (**⇧⌘B**) records every action and error, so you always know what happened.
@@ -73,6 +79,7 @@ Anything destructive asks first.
 2. Open it and drag **Swiftbus** to **Applications**.
 
 **Requirements**
+
 - macOS 14 Sonoma or later (Apple silicon and Intel)
 - A Service Bus connection string with **Manage**, **Send** and **Listen** rights.
   Manage is needed to list topics and subscriptions; Send and Listen are needed to read, resend and
@@ -89,17 +96,17 @@ Manage saved connections, appearance and layout any time in **Settings** (**⌘,
 
 ## Keyboard shortcuts
 
-| Shortcut | Action |
-| --- | --- |
-| **⌘R** | Refresh |
-| **⌘F** | Find topics |
+| Shortcut                 | Action                                               |
+| ------------------------ | ---------------------------------------------------- |
+| **⌘R**                   | Refresh                                              |
+| **⌘F**                   | Find topics                                          |
 | **⌘1** / **⌘2** / **⌘3** | Active / dead-letter / transfer dead-letter messages |
-| **⌥⌘G** | Group dead-letters by reason |
-| **⌥⌘R** | Resend selected messages |
-| **⌘⌫** | Delete selected messages |
-| **⌘B** | Toggle sidebar |
-| **⇧⌘B** | Toggle activity log |
-| **⌘,** | Settings |
+| **⌥⌘G**                  | Group dead-letters by reason                         |
+| **⌥⌘R**                  | Resend selected messages                             |
+| **⌘⌫**                   | Delete selected messages                             |
+| **⌘B**                   | Toggle sidebar                                       |
+| **⇧⌘B**                  | Toggle activity log                                  |
+| **⌘,**                   | Settings                                             |
 
 ## Building from source
 
