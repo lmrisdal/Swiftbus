@@ -181,6 +181,9 @@ dotnet publish Helper/SwiftbusHelper/SwiftbusHelper.csproj -c Release -r osx-arm
   build setting. `CFBundleVersion` is `git rev-list --count HEAD` (Sparkle compares it), so don't go back
   to per-workflow run numbers. The `-spks`/`-spki` mach-lookup entitlements and
   `SUEnableInstallerLauncherService` are required for a sandboxed app to install updates.
+  Sparkle's helpers (`Installer.xpc`, `Downloader.xpc`, `Autoupdate`, `Updater.app`) ship ad-hoc signed
+  and `xcodebuild archive` doesn't re-sign them, so `build.yml` re-signs them inside-out with Developer
+  ID and re-seals the app; without that, notarization comes back "Invalid".
 - Running the app against a real namespace needs a connection string with Manage, Send and Listen
   rights. Never commit connection strings or keys; tests must not hit Azure.
 

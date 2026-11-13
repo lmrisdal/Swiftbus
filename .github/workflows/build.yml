@@ -155,6 +155,19 @@ jobs:
             "${SIGNING[@]}"
           mkdir -p dist
           ditto "$RUNNER_TEMP/Swiftbus.xcarchive/Products/Applications/Swiftbus.app" dist/Swiftbus.app
+          if [ "$SIGNED" = "true" ]; then
+            # Sparkle's helpers ship ad-hoc signed and `archive` doesn't re-sign nested code, so
+            # notarization rejects them. Sign inside-out with Developer ID, then re-seal the app.
+            ID="Developer ID Application"
+            SPARKLE=dist/Swiftbus.app/Contents/Frameworks/Sparkle.framework
+            sign() { codesign --force --sign "$ID" --options runtime --timestamp --keychain "$KEYCHAIN" "$@"; }
+            sign "$SPARKLE/Versions/B/XPCServices/Installer.xpc"
+            sign --preserve-metadata=entitlements "$SPARKLE/Versions/B/XPCServices/Downloader.xpc"
+            sign "$SPARKLE/Versions/B/Autoupdate"
+            sign "$SPARKLE/Versions/B/Updater.app"
+            sign "$SPARKLE"
+            sign --preserve-metadata=entitlements,requirements,flags dist/Swiftbus.app
+          fi
           lipo -info dist/Swiftbus.app/Contents/MacOS/Swiftbus dist/Swiftbus.app/Contents/Helpers/swiftbus-helper
           codesign --verify --deep --strict --verbose=2 dist/Swiftbus.app
 
