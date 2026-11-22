@@ -91,10 +91,11 @@ private struct WelcomeButton: View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
                 .frame(maxWidth: .infinity).padding(.vertical, 10)
+                .background(prominent && isEnabled ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.quaternary),
+                            in: Capsule())
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .background(prominent && isEnabled ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.quaternary),
-                    in: Capsule())
         .foregroundStyle(prominent && isEnabled ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
         .opacity(isEnabled ? 1 : 0.5)
     }

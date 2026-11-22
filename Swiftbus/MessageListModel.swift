@@ -265,6 +265,15 @@ final class MessageListModel {
         return result
     }
 
-    /// The message shown in the inspector: the first selected one.
-    var inspected: DeadLetterMessage? { selectedMessages.first }
+    /// The message shown in the inspector: only when exactly one message is selected. A multi-selection
+    /// (or a group of several) is for bulk actions, so the inspector stays out of the way.
+    var inspected: DeadLetterMessage? {
+        let selected = selectedMessages
+        return selected.count == 1 ? selected[0] : nil
+    }
+
+    /// Selects every row of the table; in grouped mode the groups, which stand for all their messages.
+    func selectAll() {
+        selection = Set(rows.map(\.id))
+    }
 }

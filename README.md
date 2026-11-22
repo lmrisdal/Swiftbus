@@ -86,7 +86,7 @@ Manage saved connections, appearance and layout any time in **Settings** (**⌘,
 | **⌥⌘R**                  | Resend selected messages                             |
 | **⌘⌫**                   | Delete selected messages                             |
 | **⌘B**                   | Toggle sidebar                                       |
-| **⇧⌘B**                  | Toggle activity log                                  |
+| **⌥⌘B**                  | Toggle activity log                                  |
 | **⌘,**                   | Settings                                             |
 
 ## Building from source

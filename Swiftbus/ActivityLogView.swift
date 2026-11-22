@@ -22,7 +22,7 @@ struct ActivityLogView: View {
                            message: "Connections, refreshes, resends and errors show up here.")
             } else {
                 ScrollViewReader { proxy in
-                    List(log.entries) { entry in
+                    List(log.entries.reversed()) { entry in
                         HStack(alignment: .top, spacing: 10) {
                             icon(entry.level)
                                 .font(.system(size: 13))
@@ -38,8 +38,9 @@ struct ActivityLogView: View {
                         .listRowSeparator(.hidden)
                         .id(entry.id)
                     }
+                    // Newest first: keep the latest entry in view as new ones arrive.
                     .onChange(of: log.entries.count) {
-                        if let last = log.entries.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                        if let last = log.entries.last { proxy.scrollTo(last.id, anchor: .top) }
                     }
                 }
             }

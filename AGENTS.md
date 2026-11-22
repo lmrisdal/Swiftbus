@@ -49,7 +49,7 @@ the `MessagingClient` protocol, so the helper could later be replaced by a pure-
 │   ├── SyntaxHighlighter.swift    ← JSON/XML colour spans, shared by the editor and the message inspector
 │   ├── MessagesView.swift         ← message table, detail pane, action progress UI
 │   ├── ActivityLog.swift          ← in-memory log of actions/errors
-│   ├── ActivityLogView.swift      ← activity log window (⌥⌘L)
+│   ├── ActivityLogView.swift      ← activity log window (⌥⌘B)
 │   ├── AppCommands.swift          ← menu commands / keyboard shortcuts
 │   ├── AppUpdater.swift           ← Sparkle wrapper: Check for Updates…, Settings › Updates
 │   ├── Info.plist                 ← Sparkle keys only (rest is generated); excluded from resources

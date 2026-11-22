@@ -51,6 +51,7 @@ struct SendMessagesSheet: View {
     @State private var contentType = "application/json"
     @State private var subject = ""
     @State private var messageId = ""
+    @State private var correlationId = ""
     @State private var properties: [MessageProperty] = []
     @State private var isWorking = false
     @State private var problem: String?
@@ -64,6 +65,7 @@ struct SendMessagesSheet: View {
                     TextField("Content type", text: $contentType)
                     TextField("Subject", text: $subject, prompt: Text("Optional"))
                     TextField("Message ID", text: $messageId, prompt: Text("Optional, generated if empty"))
+                    TextField("Correlation ID", text: $correlationId, prompt: Text("Optional"))
                 }
                 Section {
                     PropertiesEditor(properties: $properties)
@@ -114,7 +116,7 @@ struct SendMessagesSheet: View {
 
     private func send() {
         let message = OutgoingMessage(body: messageBody, contentType: contentType, subject: subject,
-                                      messageId: messageId, properties: properties)
+                                      messageId: messageId, correlationId: correlationId, properties: properties)
         if let issue = message.propertyProblem { problem = issue; return }
         problem = nil
         isWorking = true

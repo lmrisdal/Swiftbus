@@ -9,6 +9,9 @@ struct MessagesView: View {
     @State private var repairing: DeadLetterMessage?
     @State private var inspectorFraction: CGFloat = 0.5
     @State private var dragStartHeight: CGFloat?
+    /// Whether the inspector below the table is shown. The close button or ⌘J hides it; ⌘J or
+    /// selecting a message shows it again.
+    @AppStorage("showsMessageInspector") private var showsInspector = true
 
     var body: some View {
         GeometryReader { geo in
@@ -23,7 +26,7 @@ struct MessagesView: View {
                     messageTable
                 }
                 .frame(maxHeight: .infinity)
-                if let message = model.inspected {
+                if showsInspector, let message = model.inspected {
                     Divider()
                         .overlay {
                             Color.clear
@@ -43,7 +46,7 @@ struct MessagesView: View {
                                         .onEnded { _ in dragStartHeight = nil }
                                 )
                         }
-                    MessageInspector(message: message).frame(height: inspectorHeight)
+                    MessageInspector(message: message, onClose: { showsInspector = false }).frame(height: inspectorHeight)
                 }
             }
         }
@@ -78,6 +81,12 @@ struct MessagesView: View {
         }
         .focusedSceneValue(\.messageListModel, model)
         .focusedSceneValue(\.selectQueue, { [model] kind in model.queue = kind })
+        .focusedSceneValue(\.messageInspectorVisible, $showsInspector)
+        // Closing only hides the inspector until the next pick: selecting a single message brings it back.
+        .onChange(of: model.selection) {
+            if model.inspected != nil { showsInspector = true }
+        }
+        .background { selectAllShortcut }
         .onChange(of: app.messageReloadToken) { Task { await model.reload() } }
         // The model lives in @State, so it keeps the entity it was created with; pass fresh counts on.
         .onChange(of: app.selectedEntity) { _, fresh in
@@ -151,6 +160,22 @@ struct MessagesView: View {
             return "A copy of each message is sent back to the queue \(topic), then the original is removed from the dead-letter queue. A message is only removed after its copy was sent."
         }
         return "A copy of each message is sent to the topic \(topic), then the original is removed from the dead-letter queue. A message is only removed after its copy was sent."
+    }
+
+    /// ⌘A selects every message. An invisible button rather than a menu command: the Edit menu's own
+    /// Select All owns ⌘A there. Text views (search field, body viewer) keep their own select-all.
+    private var selectAllShortcut: some View {
+        Button("Select All Messages") {
+            if let text = NSApp.keyWindow?.firstResponder as? NSText {
+                text.selectAll(nil)
+            } else {
+                model.selectAll()
+            }
+        }
+        .keyboardShortcut("a")
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .accessibilityHidden(true)
     }
 
     @ViewBuilder
@@ -279,86 +304,147 @@ private extension View {
 
 struct MessageInspector: View {
     let message: DeadLetterMessage
+    var onClose: () -> Void = {}
+    @State private var bodyFraction: CGFloat = 0.5
+    @State private var dragStartWidth: CGFloat?
+
+    private static let minBodyWidth: CGFloat = 250
+    private static let minDetailsWidth: CGFloat = 280
 
     var body: some View {
+        // Not an HSplitView: NSSplitView sizes its panes with Auto Layout, and the details Form's wrapped
+        // text (long dead-letter descriptions) changes height with width, which can loop AppKit's
+        // constraint passes until it throws. A plain SwiftUI split, like the vertical one in MessagesView,
+        // has no such feedback.
+        GeometryReader { geo in
+            let total = geo.size.width
+            let bodyWidth = clampedBodyWidth(total * bodyFraction, total: total)
+            HStack(spacing: 0) {
+                bodyPane.frame(width: bodyWidth)
+                Divider()
+                    .overlay {
+                        Color.clear
+                            .frame(width: 8)
+                            .contentShape(Rectangle())
+                            .onHover { inside in
+                                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                            }
+                            .gesture(
+                                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                                    .onChanged { value in
+                                        let start = dragStartWidth ?? bodyWidth
+                                        dragStartWidth = start
+                                        let proposed = start + value.translation.width
+                                        bodyFraction = clampedBodyWidth(proposed, total: total) / max(total, 1)
+                                    }
+                                    .onEnded { _ in dragStartWidth = nil }
+                            )
+                    }
+                detailsPane.frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private func clampedBodyWidth(_ proposed: CGFloat, total: CGFloat) -> CGFloat {
+        let upper = max(total - Self.minDetailsWidth, Self.minBodyWidth)
+        return min(max(proposed, Self.minBodyWidth), upper)
+    }
+
+    private var bodyPane: some View {
         let body = BodyFormatter.format(message)
-        HSplitView {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 8) {
-                    IconTile(systemImage: "curlybraces", colors: [Theme.brandTop, Theme.brandBottom], size: 22)
-                    Text("Body").font(.headline)
-                    Text(label(for: body.format))
-                        .font(.caption.weight(.bold))
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Capsule().fill(Color.accentColor.opacity(0.15)))
-                        .foregroundStyle(Color.accentColor)
-                    Text(Int64(message.bodySize), format: .byteCount(style: .file))
-                        .font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    CopyButton(title: "Copy body", text: body.text)
-                }
-                .padding(.horizontal, 12).padding(.vertical, 8)
-                // An NSTextView, not a SwiftUI Text: very long unbroken lines (e.g. escaped JSON inside a
-                // string) make SwiftUI's Text render as smeared streaks.
-                JSONEditor(text: .constant(body.text), format: editorFormat(for: body.format), isEditable: false)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                IconTile(systemImage: "curlybraces", colors: [Theme.brandTop, Theme.brandBottom], size: 22)
+                Text("Body").font(.headline)
+                Text(label(for: body.format))
+                    .font(.caption.weight(.bold))
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+                    .foregroundStyle(Color.accentColor)
+                Text(Int64(message.bodySize), format: .byteCount(style: .file))
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                CopyButton(title: "Copy body", text: body.text)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            // An NSTextView, not a SwiftUI Text: very long unbroken lines (e.g. escaped JSON inside a
+            // string) make SwiftUI's Text render as smeared streaks.
+            JSONEditor(text: .constant(body.text), format: editorFormat(for: body.format), isEditable: false)
                 .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.background))
                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
                 .padding([.horizontal, .bottom], 10)
-            }
-            .background(Color(nsColor: .windowBackgroundColor))
-            .frame(minWidth: 250)
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
 
-            Form {
-                if message.deadLetterReason != nil || message.deadLetterErrorDescription != nil {
-                    Section {
-                        // Full text, wrapped: reasons are often long exception messages, so the
-                        // single-line tag used in the table would truncate them here.
-                        HStack(alignment: .top, spacing: 10) {
-                            RoundedRectangle(cornerRadius: 1.5)
-                                .fill(Theme.color(forReason: message.deadLetterReason))
-                                .frame(width: 3)
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(message.deadLetterReason ?? "(no reason)")
-                                    .font(.callout.weight(.semibold))
-                                if let description = message.deadLetterErrorDescription, !description.isEmpty {
-                                    Text(description).font(.callout).foregroundStyle(.secondary)
-                                }
-                            }
-                            .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            if let reason = message.deadLetterReason {
-                                CopyButton(title: "Copy reason", text: reason, iconOnly: true)
+    private var detailsPane: some View {
+        VStack(spacing: 0) {
+            // Same height and padding as the Body header, so the close button lines up with it at the
+            // inspector's far right edge.
+            HStack(spacing: 8) {
+                IconTile(systemImage: "info", colors: [Theme.brandTop, Theme.brandBottom], size: 22)
+                Text("Details").font(.headline)
+                Spacer()
+                Button(action: onClose) { Image(systemName: "xmark") }
+                    .buttonStyle(.borderless)
+                    .help("Close the inspector (⌘J)")
+                    .accessibilityLabel("Close inspector")
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            detailsForm
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private var detailsForm: some View {
+        Form {
+            if message.deadLetterReason != nil || message.deadLetterErrorDescription != nil {
+                Section {
+                    // Full text, wrapped: reasons are often long exception messages, so the
+                    // single-line tag used in the table would truncate them here.
+                    HStack(alignment: .top, spacing: 10) {
+                        RoundedRectangle(cornerRadius: 1.5)
+                            .fill(Theme.color(forReason: message.deadLetterReason))
+                            .frame(width: 3)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(message.deadLetterReason ?? "(no reason)")
+                                .font(.callout.weight(.semibold))
+                            if let description = message.deadLetterErrorDescription, !description.isEmpty {
+                                Text(description).font(.callout).foregroundStyle(.secondary)
                             }
                         }
-                        .padding(.vertical, 2)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        if let reason = message.deadLetterReason {
+                            CopyButton(title: "Copy reason", text: reason, iconOnly: true)
+                        }
                     }
-                }
-                Section("System") {
-                    row("Sequence number", String(message.sequenceNumber))
-                    row("Message ID", message.messageId)
-                    row("Enqueued", message.enqueuedTime.formatted(.dateTime.year().month().day().hour().minute().second()))
-                    row("Delivery count", String(message.deliveryCount))
-                    row("Subject", message.subject)
-                    row("Content type", message.contentType)
-                    row("Correlation ID", message.correlationId)
-                    row("Reason", message.deadLetterReason)
-                    row("Error description", message.deadLetterErrorDescription)
-                }
-                Section("Application properties") {
-                    if message.applicationProperties.isEmpty {
-                        Text("None").foregroundStyle(.secondary)
-                    }
-                    ForEach(message.applicationProperties.sorted(by: { $0.key < $1.key }), id: \.key) { key, value in
-                        row(key, value)
-                    }
+                    .padding(.vertical, 2)
                 }
             }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-            .background(Color(nsColor: .windowBackgroundColor))
-            .frame(minWidth: 280)
+            Section("System") {
+                row("Sequence number", String(message.sequenceNumber))
+                row("Message ID", message.messageId)
+                row("Enqueued", message.enqueuedTime.formatted(.dateTime.year().month().day().hour().minute().second()))
+                row("Delivery count", String(message.deliveryCount))
+                row("Subject", message.subject)
+                row("Content type", message.contentType)
+                row("Correlation ID", message.correlationId)
+                row("Reason", message.deadLetterReason)
+                row("Error description", message.deadLetterErrorDescription)
+            }
+            Section("Application properties") {
+                if message.applicationProperties.isEmpty {
+                    Text("None").foregroundStyle(.secondary)
+                }
+                ForEach(message.applicationProperties.sorted(by: { $0.key < $1.key }), id: \.key) { key, value in
+                    row(key, value)
+                }
+            }
         }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private func editorFormat(for format: BodyFormat) -> EditorFormat {

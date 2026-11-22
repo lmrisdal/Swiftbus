@@ -5,6 +5,7 @@ extension FocusedValues {
     @Entry var selectQueue: ((QueueKind) -> Void)?
     @Entry var focusSearch: (() -> Void)?
     @Entry var toggleActivityLog: (() -> Void)?
+    @Entry var messageInspectorVisible: Binding<Bool>?
 }
 
 /// View-menu commands that act on whatever the front window is showing.
@@ -13,6 +14,7 @@ struct AppCommands: Commands {
     @FocusedValue(\.selectQueue) private var selectQueue
     @FocusedValue(\.focusSearch) private var focusSearch
     @FocusedValue(\.toggleActivityLog) private var toggleActivityLog
+    @FocusedValue(\.messageInspectorVisible) private var inspectorVisible
 
     var body: some Commands {
         CommandGroup(replacing: .sidebar) {
@@ -23,7 +25,7 @@ struct AppCommands: Commands {
             }
             .keyboardShortcut("b")
             Button("Toggle Activity Log") { toggleActivityLog?() }
-                .keyboardShortcut("b", modifiers: [.command, .shift])
+                .keyboardShortcut("b", modifiers: [.command, .option])
                 .disabled(toggleActivityLog == nil)
             Divider()
             Button("Show Active Messages") { selectQueue?(.active) }
@@ -39,6 +41,11 @@ struct AppCommands: Commands {
                                                     set: { messages?.groupByReason = $0 }))
                 .keyboardShortcut("g", modifiers: [.command, .option])
                 .disabled(messages == nil || messages?.queue != .deadLetter)
+            Button(inspectorVisible?.wrappedValue == false ? "Show Message Inspector" : "Hide Message Inspector") {
+                inspectorVisible?.wrappedValue.toggle()
+            }
+            .keyboardShortcut("j")
+            .disabled(inspectorVisible == nil)
         }
         CommandGroup(after: .textEditing) {
             Button("Find Topics") { focusSearch?() }
